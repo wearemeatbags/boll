@@ -168,16 +168,16 @@ export const MODES: Record<Mode, ModeConfig> = {
 };
 
 export const MODE_LABELS: Record<Mode, string> = {
-  og: 'OG',
+  og: 'PRACTICE',
   waves: 'WAVES',
-  rush: 'RUSH',
+  rush: 'SCORE',
   chaos: 'CHAOS',
 };
 
 export const MODE_TAGLINES: Record<Mode, string> = {
-  og: 'THE ORIGINAL JUGGLE',
+  og: 'ORIGINAL JUGGLE · FREE PRACTICE',
   waves: 'CLEAR WAVES · PACE RISES · PADDLE SHRINKS',
-  rush: '60 SECONDS · MISSES COST 5S · GO',
+  rush: 'SCORE ATTACK · 60 SECONDS · MISSES COST 5S',
   chaos: 'MULTIBALL · EVERY 12 HITS ADDS A BALL',
 };
 

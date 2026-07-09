@@ -5,8 +5,10 @@ export interface Vec2 {
 
 export type Mode = 'og' | 'waves' | 'rush' | 'chaos';
 export type BounceModel = 'og' | 'arcade';
-export type GameState = 'title' | 'playing' | 'paused' | 'gameover';
+export type GameState = 'title' | 'playing' | 'paused' | 'gameover' | 'stageclear';
 export type PauseCause = 'user' | 'menu' | 'auto';
+export type RunKind = 'practice' | 'scoreAttack' | 'chaos' | 'stage';
+export type Medal = 0 | 1 | 2 | 3;
 
 export interface BallState {
   x: number;
@@ -87,6 +89,35 @@ export interface ModeConfig {
   multiball: boolean;
   /** Colored particles; OG keeps everything white. */
   colorFx: boolean;
+}
+
+export type ObjectiveKind = 'hits' | 'sweetHits' | 'gates' | 'bankGates' | 'carrySeconds' | 'score';
+
+export interface StageObjective {
+  kind: ObjectiveKind;
+  target: number;
+}
+
+export interface MedalScores {
+  bronze: number;
+  silver: number;
+  gold: number;
+}
+
+export interface StageConfig {
+  id: string;
+  index: number;
+  title: string;
+  subtitle: string;
+  mode: Mode;
+  objective: StageObjective;
+  medalScores: MedalScores;
+  timeLimit?: number;
+}
+
+export interface StageRecord {
+  bestScore: number;
+  medal: Medal;
 }
 
 export interface Toggles {

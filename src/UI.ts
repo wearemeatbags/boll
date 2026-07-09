@@ -1,7 +1,8 @@
 import { MODE_LABELS, MODE_TAGLINES, PRESETS, SLIDER_DEFS, type PresetName } from './config';
-import type { Mode, PhysicsParams, Toggles } from './types';
+import { medalName, objectiveText } from './stages';
+import type { Medal, Mode, PhysicsParams, StageConfig, StageRecord, Toggles } from './types';
 
-export type OverlayKind = 'title' | 'paused' | 'gameover';
+export type OverlayKind = 'mainMenu' | 'stageSelect' | 'paused' | 'gameover' | 'stageclear';
 
 const MODE_ORDER: Mode[] = ['og', 'waves', 'rush', 'chaos'];
 
@@ -16,10 +17,15 @@ export interface HudModel {
 }
 
 export interface OverlayData {
-  mode?: Mode;
   heading?: string;
   score?: number;
   best?: number;
+  runLabel?: string;
+  objective?: string;
+  medal?: Medal;
+  nextStageId?: string;
+  stages?: StageConfig[];
+  stageRecords?: Record<string, StageRecord>;
 }
 
 interface ToggleDef {
@@ -65,6 +71,16 @@ export class UI {
   onPreset: (name: PresetName) => void = () => {};
   onToggle: (key: keyof Toggles, on: boolean) => void = () => {};
   onMode: (m: Mode) => void = () => {};
+  onStartPractice: () => void = () => {};
+  onStartScoreAttack: () => void = () => {};
+  onStartChaos: () => void = () => {};
+  onShowStageSelect: () => void = () => {};
+  onStage: (id: string) => void = () => {};
+  onRetry: () => void = () => {};
+  onNextStage: (id: string) => void = () => {};
+  onMainMenu: () => void = () => {};
+  onResume: () => void = () => {};
+  onSettings: () => void = () => {};
   onRestart: () => void = () => {};
   onMenuOpen: () => void = () => {};
   onMenuClose: () => void = () => {};
@@ -94,7 +110,7 @@ export class UI {
     sub: '',
   };
 
-  constructor(uiLayer: HTMLElement) {
+  constructor(private uiLayer: HTMLElement) {
     this.hudBest = el('div', 'hud-best', uiLayer, 'BEST 0');
     this.hudScore = el('div', 'hud-score', uiLayer, '0');
     this.hudSpd = el('div', 'hud-spd', uiLayer, 'SPD 0');
@@ -138,36 +154,101 @@ export class UI {
 
   showOverlay(kind: OverlayKind, data?: OverlayData): void {
     this.overlay.hidden = false;
+    this.uiLayer.classList.add('overlay-open');
     const card = this.overlayCard;
+    card.className = 'overlay-card';
     card.textContent = '';
-    if (kind === 'title') {
-      const mode = data?.mode ?? 'og';
+    if (kind === 'mainMenu') {
+      this.buildMainMenu(card, data);
+    } else if (kind === 'stageSelect') {
+      this.buildStageSelect(card, data);
+    } else if (kind === 'paused') {
+      card.classList.add('overlay-narrow');
+      el('div', 'ov-big', card, 'PAUSED');
+      const actions = el('div', 'overlay-actions', card);
+      button('RESUME', actions, () => this.onResume());
+      button('MENU', actions, () => this.onMainMenu());
+    } else {
+      this.buildEndOverlay(card, kind, data);
+    }
+  }
+
+  private buildMainMenu(card: HTMLElement, data?: OverlayData): void {
+    card.classList.add('overlay-menu-card');
+    const stages = data?.stages ?? [];
+    const records = data?.stageRecords ?? {};
+    const cleared = stages.filter((stage) => (records[stage.id]?.medal ?? 0) > 0).length;
+
       el('div', 'ov-title', card, 'BOLL');
       el('div', 'ov-sub', card, 'PADDLE JUGGLE');
-      el('div', 'ov-blink', card, 'CLICK OR TAP TO SERVE');
-      el('div', 'ov-hint', card, `${MODE_LABELS[mode]} · ${MODE_TAGLINES[mode]}`);
-      const hint = el('div', 'ov-hint', card);
-      hint.append(
-        'MOVE THE PADDLE TO JUGGLE THE BALL',
-        document.createElement('br'),
-        'FLICK UP FOR POWER - EASE DOWN TO CUSHION',
-        document.createElement('br'),
-        'SPACE SERVE · P PAUSE · R RESTART · ←/→ OR A/D MOVE',
-      );
-    } else if (kind === 'paused') {
-      el('div', 'ov-big', card, 'PAUSED');
-      el('div', 'ov-blink', card, 'P OR CLICK TO RESUME');
-    } else {
-      el('div', 'ov-big', card, data?.heading ?? 'MISS');
-      if (data?.score !== undefined && data.best !== undefined) {
-        el('div', 'ov-score', card, `SCORE ${data.score} · BEST ${data.best}`);
-      }
-      el('div', 'ov-blink', card, 'TAP TO SERVE AGAIN');
+    el('div', 'ov-hint', card, 'FLICK UP FOR POWER - EASE DOWN TO CUSHION');
+
+    const menu = el('div', 'main-menu', card);
+    button('ARCADE LADDER', menu, () => this.onShowStageSelect());
+    button('SCORE ATTACK', menu, () => this.onStartScoreAttack());
+    button('CHAOS CHALLENGE', menu, () => this.onStartChaos());
+    button('PRACTICE / ORIGINAL', menu, () => this.onStartPractice());
+    button('SETTINGS', menu, () => this.onSettings());
+
+    if (stages.length > 0) {
+      el('div', 'ov-hint', card, `${cleared}/${stages.length} STAGES CLEAR`);
     }
+  }
+
+  private buildStageSelect(card: HTMLElement, data?: OverlayData): void {
+    card.classList.add('overlay-menu-card');
+    const stages = data?.stages ?? [];
+    const records = data?.stageRecords ?? {};
+
+    el('div', 'ov-big', card, 'ARCADE LADDER');
+    el('div', 'ov-hint', card, 'CLEAR OBJECTIVES · EARN MEDALS · KEEP CONTROL');
+    const list = el('div', 'stage-list', card);
+    for (const stage of stages) {
+      const record = records[stage.id] ?? { bestScore: 0, medal: 0 as Medal };
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'stage-pick';
+      b.addEventListener('click', () => {
+        this.onStage(stage.id);
+        b.blur();
+      });
+      const left = el('span', 'stage-pick-main', b);
+      el('span', 'stage-pick-title', left, `${stage.index}. ${stage.title}`);
+      el('span', 'stage-pick-sub', left, `${objectiveText(stage.objective).toUpperCase()} · ${stage.subtitle}`);
+      const right = el('span', 'stage-pick-meta', b);
+      el('span', '', right, medalName(record.medal));
+      el('span', '', right, `BEST ${record.bestScore}`);
+      list.appendChild(b);
+    }
+    const actions = el('div', 'overlay-actions', card);
+    button('BACK', actions, () => this.onMainMenu());
+  }
+
+  private buildEndOverlay(card: HTMLElement, kind: OverlayKind, data?: OverlayData): void {
+    card.classList.add('overlay-narrow');
+    const cleared = kind === 'stageclear';
+    el('div', 'ov-big', card, data?.heading ?? (cleared ? 'STAGE CLEAR' : 'MISS'));
+    if (data?.runLabel) el('div', 'ov-hint', card, data.runLabel);
+    if (data?.score !== undefined && data.best !== undefined) {
+      el('div', 'ov-score', card, `SCORE ${data.score} · BEST ${data.best}`);
+    }
+    if (data?.objective) {
+      el('div', cleared ? 'ov-clear' : 'ov-hint', card, data.objective);
+    }
+    if (data?.medal !== undefined) {
+      el('div', 'ov-medal', card, `MEDAL ${medalName(data.medal)}`);
+    }
+    const actions = el('div', 'overlay-actions', card);
+    button('RETRY', actions, () => this.onRetry());
+    if (data?.nextStageId) {
+      button('NEXT', actions, () => this.onNextStage(data.nextStageId!));
+    }
+    button('MENU', actions, () => this.onMainMenu());
   }
 
   hideOverlay(): void {
     this.overlay.hidden = true;
+    this.uiLayer.classList.remove('overlay-open');
   }
 
   // --- menu ------------------------------------------------------------------

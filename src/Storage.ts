@@ -1,5 +1,6 @@
 import { DEFAULT_PARAMS, SLIDER_DEFS, clamp } from './config';
-import type { Mode, PhysicsParams, Toggles } from './types';
+import { STAGES, emptyStageRecords } from './stages';
+import type { Medal, Mode, PhysicsParams, StageRecord, Toggles } from './types';
 
 const KEY = 'boll.pj2.v1';
 const SAVE_DEBOUNCE_MS = 250;
@@ -7,8 +8,9 @@ const SAVE_DEBOUNCE_MS = 250;
 const MODE_IDS: Mode[] = ['og', 'waves', 'rush', 'chaos'];
 
 export interface SaveData {
-  version: 2;
+  version: 3;
   best: Record<Mode, number>;
+  stages: Record<string, StageRecord>;
   settings: {
     mode: Mode;
     toggles: Toggles;
@@ -18,8 +20,9 @@ export interface SaveData {
 
 function defaults(): SaveData {
   return {
-    version: 2,
+    version: 3,
     best: { og: 0, waves: 0, rush: 0, chaos: 0 },
+    stages: emptyStageRecords(),
     settings: {
       mode: 'og',
       toggles: { keyboard: true, mouse: true, effects: true, crt: true, sfx: true, music: true },
@@ -36,6 +39,10 @@ function asScore(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
 }
 
+function asMedal(v: unknown): Medal {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 3 ? (v as Medal) : 0;
+}
+
 /** Merge parsed JSON of unknown shape over defaults, clamped to valid ranges. */
 function sanitize(raw: unknown): SaveData {
   const d = defaults();
@@ -49,6 +56,17 @@ function sanitize(raw: unknown): SaveData {
   // v1 migration: the old ARCADE mode evolved into WAVES.
   if (d.best.waves === 0 && best['arcade'] !== undefined) {
     d.best.waves = asScore(best['arcade']);
+  }
+
+  const stages = (o['stages'] ?? {}) as Record<string, unknown>;
+  for (const stage of STAGES) {
+    const rawRecord = stages[stage.id];
+    if (typeof rawRecord !== 'object' || rawRecord === null) continue;
+    const record = rawRecord as Record<string, unknown>;
+    d.stages[stage.id] = {
+      bestScore: asScore(record['bestScore']),
+      medal: asMedal(record['medal']),
+    };
   }
 
   const settings = (o['settings'] ?? {}) as Record<string, unknown>;

@@ -6,17 +6,19 @@ square-wave beeps, looping soundtrack, and a proper curved-glass CRT filter.
 
 Play it at <https://wearemeatbags.github.io/boll/>.
 
-Four ways to play, switchable in the menu:
+Main ways to play:
 
-- **OG** (default): a faithful port of the original single-file prototype.
+- **Arcade Ladder**: six objective stages that teach and pressure the bounce
+  mechanic: hits, sweet hits, gates, bank gates, carry control, and timed score.
+  Each stage stores a best score and medal.
+- **Score Attack**: a 60 second sprint. Misses cost 5 seconds instead of ending
+  the run, so keep the ball alive and chase points before the clock hits zero.
+- **Chaos Challenge**: multiball. Every 12 paddle hits adds another ball (up to
+  4), and each extra ball raises the pace. Lose one and keep going as long as
+  one remains.
+- **Practice / Original**: a faithful port of the original single-file prototype.
   The paddle follows your pointer in **both** directions. Flick up for power,
   ease down to cushion. Score = paddle hits.
-- **WAVES**: clear hit quotas to advance waves. Each wave raises the pace
-  floor and shrinks the paddle a little more, up to a cap, then holds steady.
-- **RUSH**: a 60 second sprint. Misses cost 5 seconds instead of ending the
-  run, so keep the ball alive and chase points before the clock hits zero.
-- **CHAOS**: multiball. Every 12 paddle hits adds another ball (up to 4), and
-  each extra ball raises the pace. Lose one and keep going as long as one remains.
 
 ## Run it
 
@@ -91,14 +93,15 @@ model:
   once, and each extra ball in play raises the pace. Losing a ball is safe as
   long as another is still live; losing the last one ends the run.
 
-Best scores are stored per mode in `localStorage`.
+Best scores are stored per mode in `localStorage`. Arcade Ladder also stores
+per-stage best scores and medals.
 
 ## The menu
 
 MENU (top-right) pauses the game while open and resumes when closed (if the
 menu is what paused it). It contains:
 
-- **Mode**: OG / WAVES / RUSH / CHAOS
+- **Mode**: Practice / WAVES / Score / CHAOS
 - **Live physics sliders**: gravity, bounce, ball size, paddle power
   (momentum transfer), air drag, paddle width, paddle speed (keyboard); WAVES,
   RUSH, and CHAOS also expose max ball speed and minimum bounce velocity
@@ -136,7 +139,9 @@ the SFX cue table in [src/audio/Sound.ts](src/audio/Sound.ts).
 src/
   main.ts              bootstrap + frame loop
   config.ts            every constant, preset, slider, and mode flag
+  stages.ts            Arcade Ladder stage catalog and medal thresholds
   types.ts             plain-data shared types
+  ObjectiveTracker.ts  objective progress for stage runs
   Physics.ts           pure fixed-step physics core (no three.js, no DOM)
   Game.ts              orchestrator: state machine, loop, event routing
   InputController.ts   pointer/keyboard arbitration

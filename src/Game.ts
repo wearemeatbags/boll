@@ -36,6 +36,7 @@ import {
 } from './config';
 import { Effects } from './fx/Effects';
 import { InputController, type InputAction } from './InputController';
+import { ObjectiveTracker } from './ObjectiveTracker';
 import {
   createWorld,
   removeBall,
@@ -50,14 +51,18 @@ import { AudioBus } from './audio/AudioBus';
 import { Music } from './audio/Music';
 import { Sound } from './audio/Sound';
 import { Storage } from './Storage';
+import { STAGES, medalForScore, stageById } from './stages';
 import type {
   DerivedParams,
   GameState,
+  Medal,
   Mode,
   ModeConfig,
   PauseCause,
   PhysicsEvent,
   PhysicsParams,
+  RunKind,
+  StageConfig,
   Toggles,
 } from './types';
 import { UI } from './UI';
@@ -87,6 +92,9 @@ export class Game {
 
   private state: GameState = 'title';
   private pauseCause: PauseCause = 'user';
+  private runKind: RunKind = 'practice';
+  private activeStage: StageConfig | null = null;
+  private objective: ObjectiveTracker | null = null;
   private score = 0;
   private lastMult = 1;
   private acc = 0;
@@ -153,7 +161,7 @@ export class Game {
       if (document.hidden && this.state === 'playing') this.pause('auto');
     });
 
-    this.ui.showOverlay('title', { mode: this.modeCfg.id });
+    this.showMainMenu();
     this.ui.syncMenu(this.params, this.toggles, this.modeCfg.id);
   }
 
@@ -192,6 +200,8 @@ export class Game {
     stepPhysics(this.world, ctrl, this.params, this.derived, FIXED_STEP, this.events);
 
     if (this.state !== 'playing') return;
+
+    this.objective?.step(FIXED_STEP);
 
     if (this.modeCfg.id === 'rush') {
       this.stepRush();
@@ -268,6 +278,8 @@ export class Game {
         this.onWall(e);
       } else if (e.type === 'paddleHit') {
         this.onPaddleHit(e);
+      } else if (e.type === 'carry') {
+        this.onCarry();
       } else if (e.type === 'miss') {
         this.onMiss(e);
         return; // state (or ball indices) may have changed; drop the rest
@@ -290,6 +302,7 @@ export class Game {
       colorful ? FX_WALL : FX_WHITE,
     );
     this.effects.squash(e.ball, e.nx, e.ny, 0.12);
+    this.objective?.onWall();
   }
 
   private onPaddleHit(e: Extract<PhysicsEvent, { type: 'paddleHit' }>): void {
@@ -299,6 +312,7 @@ export class Game {
       this.sound.play('paddle');
       this.effects.burst(e.x, e.y, 5, 60, 0, 1);
       this.effects.squash(e.ball, 0, 1, 0.12);
+      this.recordPaddleObjective(e.sweet);
       return;
     }
 
@@ -341,6 +355,18 @@ export class Game {
         this.effects.popup(nb.x, nb.y, '+BALL');
       }
     }
+    this.recordPaddleObjective(e.sweet);
+  }
+
+  private onCarry(): void {
+    this.objective?.onCarry(FIXED_STEP);
+    this.checkStageClear();
+  }
+
+  private recordPaddleObjective(sweet: boolean): void {
+    this.objective?.onPaddleHit(sweet);
+    this.objective?.setScore(this.score);
+    this.checkStageClear();
   }
 
   private onGateScore(g: GateEvent): void {
@@ -351,6 +377,9 @@ export class Game {
     this.effects.burst(g.x, g.y, 10, 130, 0, -1, FX_GATE);
     this.effects.shake(0.3);
     this.effects.popup(g.x, g.y, `+${pts}`);
+    this.objective?.onGate();
+    this.objective?.setScore(this.score);
+    this.checkStageClear();
   }
 
   private onMiss(e: Extract<PhysicsEvent, { type: 'miss' }>): void {
@@ -382,6 +411,31 @@ export class Game {
     this.endRun('miss');
   }
 
+  private checkStageClear(): void {
+    if (this.state !== 'playing' || this.runKind !== 'stage' || !this.objective?.complete) return;
+    this.clearStage();
+  }
+
+  private clearStage(): void {
+    const medal = this.recordStageResult(true);
+    this.state = 'stageclear';
+    resetToReady(this.world);
+    this.ballViews.setVisible(false);
+    this.gates.setEnabled(false);
+    this.combo.reset();
+    this.sound.play('wave');
+    this.effects.celebrate();
+    this.ui.showOverlay('stageclear', {
+      heading: 'STAGE CLEAR',
+      score: this.score,
+      best: this.bestForRun(),
+      runLabel: this.runLabel(),
+      objective: this.objective?.summaryText(),
+      medal,
+      nextStageId: this.nextStageId(),
+    });
+  }
+
   private endRun(reason: 'miss' | 'timeup'): void {
     this.state = 'gameover';
     resetToReady(this.world);
@@ -389,23 +443,32 @@ export class Game {
     this.gates.setEnabled(false);
     this.combo.reset();
     const mode = this.modeCfg.id;
-    if (this.score > this.storage.data.best[mode]) {
+    if (this.runKind === 'stage') {
+      this.recordStageResult(false);
+    } else if (this.score > this.storage.data.best[mode]) {
       this.storage.data.best[mode] = this.score;
       this.storage.schedule();
     }
     this.sound.play(reason === 'miss' ? 'miss' : 'timeUp');
     if (mode !== 'og') this.effects.shake(0.5);
     const heading = reason === 'miss' ? 'MISS' : 'TIME UP';
-    this.ui.showOverlay('gameover', { score: this.score, best: this.storage.data.best[mode], heading });
+    this.ui.showOverlay('gameover', {
+      score: this.score,
+      best: this.bestForRun(),
+      heading,
+      runLabel: this.runLabel(),
+      objective: this.objective?.summaryText(),
+    });
   }
 
   private startRun(): void {
     this.score = 0;
     this.lastMult = 1;
     this.combo.reset();
+    this.objective = this.activeStage ? new ObjectiveTracker(this.activeStage) : null;
     this.wave = 1;
     this.waveHits = 0;
-    this.timeLeft = RUSH_TIME;
+    this.timeLeft = this.activeStage?.timeLimit ?? RUSH_TIME;
     this.hitsSinceBall = 0;
     this.reserveTimer = 0;
     if (this.modeCfg.gates) {
@@ -420,6 +483,40 @@ export class Game {
     this.state = 'playing';
     this.sound.play('serve');
     this.ui.hideOverlay();
+  }
+
+  private recordStageResult(cleared: boolean): Medal {
+    if (!this.activeStage) return 0;
+    const record = this.storage.data.stages[this.activeStage.id] ?? { bestScore: 0, medal: 0 as Medal };
+    const medal = cleared ? medalForScore(this.score, this.activeStage.medalScores, true) : 0;
+    const nextMedal = Math.max(record.medal, medal) as Medal;
+    const nextBest = Math.max(record.bestScore, this.score);
+    if (nextBest !== record.bestScore || nextMedal !== record.medal) {
+      this.storage.data.stages[this.activeStage.id] = { bestScore: nextBest, medal: nextMedal };
+      this.storage.schedule();
+    }
+    return medal;
+  }
+
+  private bestForRun(): number {
+    if (this.runKind === 'stage' && this.activeStage) {
+      return this.storage.data.stages[this.activeStage.id]?.bestScore ?? 0;
+    }
+    return this.storage.data.best[this.modeCfg.id];
+  }
+
+  private nextStageId(): string | undefined {
+    if (!this.activeStage) return undefined;
+    return STAGES.find((stage) => stage.index === this.activeStage!.index + 1)?.id;
+  }
+
+  private runLabel(): string {
+    if (this.runKind === 'stage' && this.activeStage) {
+      return `STAGE ${this.activeStage.index} · ${this.activeStage.title.toUpperCase()}`;
+    }
+    if (this.runKind === 'scoreAttack') return 'SCORE ATTACK';
+    if (this.runKind === 'chaos') return 'CHAOS CHALLENGE';
+    return 'PRACTICE / ORIGINAL';
   }
 
   // --- state -------------------------------------------------------------------
@@ -439,8 +536,11 @@ export class Game {
     this.ui.hideOverlay();
   }
 
-  private goToTitle(): void {
+  private showMainMenu(): void {
     this.state = 'title';
+    this.runKind = 'practice';
+    this.activeStage = null;
+    this.objective = null;
     this.score = 0;
     this.lastMult = 1;
     this.combo.reset();
@@ -453,17 +553,80 @@ export class Game {
     this.ballViews.setVisible(true);
     this.gates.setEnabled(false);
     this.music.duck(false);
-    this.ui.showOverlay('title', { mode: this.modeCfg.id });
+    this.ui.showOverlay('mainMenu', { stages: STAGES, stageRecords: this.storage.data.stages });
+  }
+
+  private showStageSelect(): void {
+    this.state = 'title';
+    resetToReady(this.world);
+    this.ballViews.setVisible(true);
+    this.gates.setEnabled(false);
+    this.music.duck(false);
+    this.ui.showOverlay('stageSelect', { stages: STAGES, stageRecords: this.storage.data.stages });
+  }
+
+  private setMode(mode: Mode, persist: boolean): void {
+    this.modeCfg = MODES[mode];
+    if (persist) {
+      this.storage.data.settings.mode = mode;
+      this.storage.schedule();
+    }
+    this.paddleView.setSweetVisible(this.modeCfg.sweetSpotVisible);
+    this.ui.syncMenu(this.params, this.toggles, this.modeCfg.id);
+  }
+
+  private startPractice(): void {
+    this.runKind = 'practice';
+    this.activeStage = null;
+    this.setMode('og', false);
+    this.startRun();
+  }
+
+  private startScoreAttack(): void {
+    this.runKind = 'scoreAttack';
+    this.activeStage = null;
+    this.setMode('rush', false);
+    this.startRun();
+  }
+
+  private startChaos(): void {
+    this.runKind = 'chaos';
+    this.activeStage = null;
+    this.setMode('chaos', false);
+    this.startRun();
+  }
+
+  private startStage(id: string): void {
+    const stage = stageById(id);
+    if (!stage) {
+      this.showStageSelect();
+      return;
+    }
+    this.runKind = 'stage';
+    this.activeStage = stage;
+    this.setMode(stage.mode, false);
+    this.startRun();
+  }
+
+  private retryRun(): void {
+    if (this.runKind === 'stage' && this.activeStage) {
+      this.startStage(this.activeStage.id);
+    } else if (this.runKind === 'scoreAttack') {
+      this.startScoreAttack();
+    } else if (this.runKind === 'chaos') {
+      this.startChaos();
+    } else {
+      this.startPractice();
+    }
   }
 
   private handleAction(a: InputAction): void {
     if (a === 'primary') {
       if (this.ui.menuOpen) return;
-      if (this.state === 'title' || this.state === 'gameover') this.startRun();
       else if (this.state === 'paused') this.resume();
     } else if (a === 'serveKey') {
       if (this.ui.menuOpen) return;
-      if (this.state === 'title' || this.state === 'gameover') this.startRun();
+      if (this.state === 'gameover' || this.state === 'stageclear') this.retryRun();
     } else if (a === 'pauseKey') {
       if (this.ui.menuOpen) {
         this.closeMenu();
@@ -474,7 +637,7 @@ export class Game {
       }
     } else if (a === 'restartKey') {
       if (this.ui.menuOpen) this.ui.closeMenu();
-      this.startRun();
+      this.retryRun();
     }
   }
 
@@ -491,9 +654,25 @@ export class Game {
       this.ui.openMenu();
     };
     this.ui.onMenuClose = (): void => this.closeMenu();
+    this.ui.onSettings = (): void => {
+      if (this.state === 'playing') this.pause('menu');
+      this.ui.openMenu();
+    };
+    this.ui.onResume = (): void => this.resume();
+    this.ui.onMainMenu = (): void => {
+      this.ui.closeMenu();
+      this.showMainMenu();
+    };
+    this.ui.onShowStageSelect = (): void => this.showStageSelect();
+    this.ui.onStartPractice = (): void => this.startPractice();
+    this.ui.onStartScoreAttack = (): void => this.startScoreAttack();
+    this.ui.onStartChaos = (): void => this.startChaos();
+    this.ui.onStage = (id: string): void => this.startStage(id);
+    this.ui.onRetry = (): void => this.retryRun();
+    this.ui.onNextStage = (id: string): void => this.startStage(id);
     this.ui.onRestart = (): void => {
       this.ui.closeMenu();
-      this.startRun();
+      this.retryRun();
     };
     this.ui.onResetDefaults = (): void => {
       this.params = { ...DEFAULT_PARAMS };
@@ -520,12 +699,8 @@ export class Game {
     };
     this.ui.onMode = (m: Mode): void => {
       if (m === this.modeCfg.id) return;
-      this.modeCfg = MODES[m];
-      this.storage.data.settings.mode = m;
-      this.storage.schedule();
-      this.paddleView.setSweetVisible(this.modeCfg.sweetSpotVisible);
-      this.goToTitle();
-      this.ui.syncMenu(this.params, this.toggles, this.modeCfg.id);
+      this.setMode(m, true);
+      this.showMainMenu();
     };
   }
 
@@ -556,7 +731,7 @@ export class Game {
         ? Math.round(Math.hypot(this.world.balls[0].vx, this.world.balls[0].vy))
         : 0;
     this.ui.setHud({
-      best: this.storage.data.best[this.modeCfg.id],
+      best: this.bestForRun(),
       score: this.score,
       spd,
       combo: this.combo.combo,
@@ -567,6 +742,11 @@ export class Game {
   }
 
   private hudSub(): string {
+    if (this.runKind === 'stage' && this.objective) {
+      const base = this.objective.hudText();
+      if (this.modeCfg.id === 'rush') return `${base} · TIME ${Math.max(0, Math.ceil(this.timeLeft))}`;
+      return base;
+    }
     switch (this.modeCfg.id) {
       case 'waves':
         return `WAVE ${this.wave}`;
