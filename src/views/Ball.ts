@@ -1,21 +1,21 @@
-import * as THREE from 'three';
+import { Mesh, MeshBasicMaterial, PlaneGeometry, type Scene } from 'three';
 import type { BallState, Vec2 } from '../types';
 
 const DEFAULT_MAX_BALLS = 4;
 
 /** Pool of white SQUARE ball meshes, exactly like the OG fillRect ball. */
 export class BallSetView {
-  private meshes: THREE.Mesh[] = [];
+  private meshes: Mesh[] = [];
   private squashX: number[] = [];
   private squashY: number[] = [];
   private diameter = 4.4;
   private masterVisible = true;
 
-  constructor(scene: THREE.Scene, max = DEFAULT_MAX_BALLS) {
+  constructor(scene: Scene, max = DEFAULT_MAX_BALLS) {
     for (let i = 0; i < max; i++) {
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(1, 1),
-        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+      const mesh = new Mesh(
+        new PlaneGeometry(1, 1),
+        new MeshBasicMaterial({ color: 0xffffff }),
       );
       mesh.position.z = 0;
       mesh.visible = false;

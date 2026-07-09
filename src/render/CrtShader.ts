@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import { Vector2, type IUniform, type Texture } from 'three';
 
 // ---------------------------------------------------------------------------
 // CRT post shader: barrel warp, scanlines, vignette, rounded-corner mask,
@@ -10,18 +10,18 @@ import * as THREE from 'three';
 export const CRT_CORNER_FRAC = 0.055;
 
 export interface CrtUniforms {
-  tDiffuse: THREE.IUniform<THREE.Texture | null>;
-  uResolution: THREE.IUniform<THREE.Vector2>;
-  uTime: THREE.IUniform<number>;
-  uBurst: THREE.IUniform<number>;
-  uSeed: THREE.IUniform<number>;
-  [uniform: string]: THREE.IUniform<unknown>;
+  tDiffuse: IUniform<Texture | null>;
+  uResolution: IUniform<Vector2>;
+  uTime: IUniform<number>;
+  uBurst: IUniform<number>;
+  uSeed: IUniform<number>;
+  [uniform: string]: IUniform<unknown>;
 }
 
 export function createCrtUniforms(): CrtUniforms {
   return {
     tDiffuse: { value: null },
-    uResolution: { value: new THREE.Vector2(1, 1) },
+    uResolution: { value: new Vector2(1, 1) },
     uTime: { value: 0 },
     uBurst: { value: 0 },
     uSeed: { value: 0.5 },

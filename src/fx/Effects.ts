@@ -1,4 +1,12 @@
-import * as THREE from 'three';
+import {
+  AdditiveBlending,
+  Color,
+  InstancedMesh,
+  MeshBasicMaterial,
+  Object3D,
+  PlaneGeometry,
+  type Scene,
+} from 'three';
 import { FX_CELEBRATE } from '../config';
 import type { Vec2 } from '../types';
 
@@ -39,10 +47,10 @@ interface Popup {
 export class Effects {
   enabled = true;
 
-  private mesh: THREE.InstancedMesh;
+  private mesh: InstancedMesh;
   private particles: Particle[] = [];
-  private dummy = new THREE.Object3D();
-  private color = new THREE.Color();
+  private dummy = new Object3D();
+  private color = new Color();
   private cursor = 0;
   private trauma = 0;
   private shakeOffset: Vec2 = { x: 0, y: 0 };
@@ -54,16 +62,16 @@ export class Effects {
   private popups: Popup[] = [];
 
   constructor(
-    scene: THREE.Scene,
+    scene: Scene,
     private ballSquash: (index: number, sx: number, sy: number) => void,
     fxLayer: HTMLElement,
     private worldToScreen: (x: number, y: number) => Vec2,
   ) {
-    this.mesh = new THREE.InstancedMesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
+    this.mesh = new InstancedMesh(
+      new PlaneGeometry(1, 1),
+      new MeshBasicMaterial({
         color: 0xffffff,
-        blending: THREE.AdditiveBlending,
+        blending: AdditiveBlending,
         depthWrite: false,
         transparent: true,
       }),

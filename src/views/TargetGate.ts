@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, type Scene } from 'three';
 import {
   DIFF_GATE_SHRINK,
   GATE_BOB_AMP,
@@ -34,11 +34,11 @@ interface Gate {
 }
 
 interface GateView {
-  group: THREE.Group;
-  frameMat: THREE.MeshBasicMaterial;
-  fillMat: THREE.MeshBasicMaterial;
-  frames: THREE.Mesh[];
-  fill: THREE.Mesh;
+  group: Group;
+  frameMat: MeshBasicMaterial;
+  fillMat: MeshBasicMaterial;
+  frames: Mesh[];
+  fill: Mesh;
 }
 
 const FLASH_TIME = 0.2;
@@ -54,7 +54,7 @@ export class GateManager {
   private time = 0;
   private enabled = false;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: Scene) {
     this.gates = [this.makeGate(0), this.makeGate(Math.PI * 0.7)];
     this.views = [this.makeView(scene), this.makeView(scene)];
     this.setEnabled(false);
@@ -143,27 +143,27 @@ export class GateManager {
     };
   }
 
-  private makeView(scene: THREE.Scene): GateView {
-    const group = new THREE.Group();
-    const geo = new THREE.PlaneGeometry(1, 1);
-    const frameMat = new THREE.MeshBasicMaterial({
+  private makeView(scene: Scene): GateView {
+    const group = new Group();
+    const geo = new PlaneGeometry(1, 1);
+    const frameMat = new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
       opacity: 1,
     });
-    const fillMat = new THREE.MeshBasicMaterial({
+    const fillMat = new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
       opacity: 0,
     });
-    const frames: THREE.Mesh[] = [];
+    const frames: Mesh[] = [];
     for (let i = 0; i < 4; i++) {
-      const m = new THREE.Mesh(geo, frameMat);
+      const m = new Mesh(geo, frameMat);
       m.position.z = -0.5;
       group.add(m);
       frames.push(m);
     }
-    const fill = new THREE.Mesh(geo, fillMat);
+    const fill = new Mesh(geo, fillMat);
     fill.position.z = -0.6;
     group.add(fill);
     scene.add(group);

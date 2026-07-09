@@ -21,6 +21,7 @@ import {
   RUSH_RESERVE_DELAY,
   RUSH_TICK_FROM,
   RUSH_TIME,
+  RUN_COUNTDOWN_SECONDS,
   SCORE_GATE,
   SCORE_PADDLE,
   SCORE_SWEET,
@@ -92,6 +93,7 @@ export class Game {
 
   private state: GameState = 'title';
   private pauseCause: PauseCause = 'user';
+  private pausedState: 'playing' | 'countdown' = 'playing';
   private runKind: RunKind = 'practice';
   private activeStage: StageConfig | null = null;
   private objective: ObjectiveTracker | null = null;
@@ -108,6 +110,8 @@ export class Game {
   private timeLeft = RUSH_TIME;
   private hitsSinceBall = 0;
   private reserveTimer = 0;
+  private countdownLeft = 0;
+  private countdownShown = '';
 
   constructor(root: HTMLElement) {
     this.params = { ...this.storage.data.settings.params };
@@ -158,7 +162,9 @@ export class Game {
     window.addEventListener('pointerdown', onFirstGesture, { once: true });
     window.addEventListener('keydown', onFirstGesture, { once: true });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.state === 'playing') this.pause('auto');
+      if (document.hidden && (this.state === 'playing' || this.state === 'countdown')) {
+        this.pause('auto');
+      }
     });
 
     this.showMainMenu();
@@ -181,6 +187,7 @@ export class Game {
       this.effects.update(dt);
       this.gates.syncViews(dt);
     }
+    if (this.state === 'countdown') this.advanceCountdown(dt);
 
     this.updateHud();
     this.paddleView.setWidth(this.world.paddle.w);
@@ -423,6 +430,7 @@ export class Game {
     this.ballViews.setVisible(false);
     this.gates.setEnabled(false);
     this.combo.reset();
+    this.ui.hideCountdown();
     this.sound.play('wave');
     this.effects.celebrate();
     this.ui.showOverlay('stageclear', {
@@ -442,6 +450,7 @@ export class Game {
     this.ballViews.setVisible(false);
     this.gates.setEnabled(false);
     this.combo.reset();
+    this.ui.hideCountdown();
     const mode = this.modeCfg.id;
     if (this.runKind === 'stage') {
       this.recordStageResult(false);
@@ -471,6 +480,9 @@ export class Game {
     this.timeLeft = this.activeStage?.timeLimit ?? RUSH_TIME;
     this.hitsSinceBall = 0;
     this.reserveTimer = 0;
+    this.countdownLeft = RUN_COUNTDOWN_SECONDS;
+    this.countdownShown = '';
+    resetToReady(this.world);
     if (this.modeCfg.gates) {
       this.gates.reset(this.gateProgress());
       this.gates.setEnabled(true);
@@ -478,11 +490,40 @@ export class Game {
       this.gates.setEnabled(false);
     }
     this.ballViews.setVisible(true);
+    this.state = 'countdown';
+    this.music.duck(false);
+    this.ui.hideOverlay();
+    this.updateCountdown();
+  }
+
+  private advanceCountdown(dt: number): void {
+    this.countdownLeft = Math.max(0, this.countdownLeft - dt);
+    if (this.countdownLeft <= 0) {
+      this.launchCountdownRun();
+      return;
+    }
+    this.updateCountdown();
+  }
+
+  private updateCountdown(): void {
+    const count = String(
+      Math.max(1, Math.ceil((this.countdownLeft / RUN_COUNTDOWN_SECONDS) * 3)),
+    );
+    if (count === this.countdownShown) return;
+    this.countdownShown = count;
+    this.ui.showCountdown(count, this.runLabel());
+    this.sound.play('tick');
+  }
+
+  private launchCountdownRun(): void {
+    if (this.state !== 'countdown') return;
     const target = this.input.serveTarget(this.world.paddle.x);
     serve(this.world, target.x, target.y);
     this.state = 'playing';
+    this.countdownLeft = 0;
+    this.countdownShown = '';
     this.sound.play('serve');
-    this.ui.hideOverlay();
+    this.ui.hideCountdown();
   }
 
   private recordStageResult(cleared: boolean): Medal {
@@ -522,7 +563,8 @@ export class Game {
   // --- state -------------------------------------------------------------------
 
   private pause(cause: PauseCause): void {
-    if (this.state !== 'playing') return;
+    if (this.state !== 'playing' && this.state !== 'countdown') return;
+    this.pausedState = this.state;
     this.state = 'paused';
     this.pauseCause = cause;
     this.music.duck(true);
@@ -531,7 +573,7 @@ export class Game {
 
   private resume(): void {
     if (this.state !== 'paused') return;
-    this.state = 'playing';
+    this.state = this.pausedState;
     this.music.duck(false);
     this.ui.hideOverlay();
   }
@@ -549,19 +591,25 @@ export class Game {
     this.timeLeft = RUSH_TIME;
     this.hitsSinceBall = 0;
     this.reserveTimer = 0;
+    this.countdownLeft = 0;
+    this.countdownShown = '';
     resetToReady(this.world);
     this.ballViews.setVisible(true);
     this.gates.setEnabled(false);
     this.music.duck(false);
+    this.ui.hideCountdown();
     this.ui.showOverlay('mainMenu', { stages: STAGES, stageRecords: this.storage.data.stages });
   }
 
   private showStageSelect(): void {
     this.state = 'title';
+    this.countdownLeft = 0;
+    this.countdownShown = '';
     resetToReady(this.world);
     this.ballViews.setVisible(true);
     this.gates.setEnabled(false);
     this.music.duck(false);
+    this.ui.hideCountdown();
     this.ui.showOverlay('stageSelect', { stages: STAGES, stageRecords: this.storage.data.stages });
   }
 
@@ -630,7 +678,7 @@ export class Game {
     } else if (a === 'pauseKey') {
       if (this.ui.menuOpen) {
         this.closeMenu();
-      } else if (this.state === 'playing') {
+      } else if (this.state === 'playing' || this.state === 'countdown') {
         this.pause('user');
       } else if (this.state === 'paused') {
         this.resume();
@@ -650,12 +698,12 @@ export class Game {
 
   private wireUi(): void {
     this.ui.onMenuOpen = (): void => {
-      if (this.state === 'playing') this.pause('menu');
+      if (this.state === 'playing' || this.state === 'countdown') this.pause('menu');
       this.ui.openMenu();
     };
     this.ui.onMenuClose = (): void => this.closeMenu();
     this.ui.onSettings = (): void => {
-      if (this.state === 'playing') this.pause('menu');
+      if (this.state === 'playing' || this.state === 'countdown') this.pause('menu');
       this.ui.openMenu();
     };
     this.ui.onResume = (): void => this.resume();

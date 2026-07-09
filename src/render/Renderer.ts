@@ -1,4 +1,16 @@
-import * as THREE from 'three';
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  LinearFilter,
+  Mesh,
+  MeshBasicMaterial,
+  OrthographicCamera,
+  PlaneGeometry,
+  Scene,
+  ShaderMaterial,
+  WebGLRenderer,
+  WebGLRenderTarget,
+} from 'three';
 import {
   FRAME_INSET,
   FRAME_THICKNESS,
@@ -18,15 +30,15 @@ const STAGE_MARGIN = 28;
  * sizing, and the two-pass CRT pipeline (scene -> render target -> CRT quad).
  */
 export class Renderer {
-  readonly scene = new THREE.Scene();
-  readonly camera: THREE.OrthographicCamera;
+  readonly scene = new Scene();
+  readonly camera: OrthographicCamera;
   readonly canvas: HTMLCanvasElement;
   private crtEnabled = true;
 
-  private gl: THREE.WebGLRenderer;
-  private target: THREE.WebGLRenderTarget;
-  private crtScene = new THREE.Scene();
-  private crtCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private gl: WebGLRenderer;
+  private target: WebGLRenderTarget;
+  private crtScene = new Scene();
+  private crtCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private crtUniforms = createCrtUniforms();
   private cssW = 320;
   private cssH = 200;
@@ -39,10 +51,10 @@ export class Renderer {
     private stage: HTMLDivElement,
     private host: HTMLElement,
   ) {
-    this.camera = new THREE.OrthographicCamera(-HALF_W, HALF_W, HALF_H, -HALF_H, 0.1, 100);
+    this.camera = new OrthographicCamera(-HALF_W, HALF_W, HALF_H, -HALF_H, 0.1, 100);
     this.camera.position.set(0, 0, 10);
 
-    this.gl = new THREE.WebGLRenderer({
+    this.gl = new WebGLRenderer({
       antialias: false,
       stencil: false,
       powerPreference: 'high-performance',
@@ -53,24 +65,24 @@ export class Renderer {
     stage.appendChild(this.canvas);
 
     // Full-physical-resolution target; LinearFilter kills warp crawl.
-    this.target = new THREE.WebGLRenderTarget(2, 2, {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
+    this.target = new WebGLRenderTarget(2, 2, {
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
       depthBuffer: true,
       stencilBuffer: false,
     });
     this.crtUniforms.tDiffuse.value = this.target.texture;
 
     // Fullscreen triangle (no plane seam).
-    const geo = new THREE.BufferGeometry();
+    const geo = new BufferGeometry();
     geo.setAttribute(
       'position',
-      new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3),
+      new Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3),
     );
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2));
-    const quad = new THREE.Mesh(
+    geo.setAttribute('uv', new Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2));
+    const quad = new Mesh(
       geo,
-      new THREE.ShaderMaterial({
+      new ShaderMaterial({
         vertexShader: CRT_VERTEX,
         fragmentShader: CRT_FRAGMENT,
         uniforms: this.crtUniforms,
@@ -178,12 +190,12 @@ export class Renderer {
 
   /** Dim inset frame: straight lines that sell the barrel warp. */
   private buildFrame(): void {
-    const mat = new THREE.MeshBasicMaterial({
+    const mat = new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
       opacity: 0.3,
     });
-    const geo = new THREE.PlaneGeometry(1, 1);
+    const geo = new PlaneGeometry(1, 1);
     const innerW = WORLD_W - FRAME_INSET * 2;
     const innerH = WORLD_H - FRAME_INSET * 2;
     const t = FRAME_THICKNESS;
@@ -194,7 +206,7 @@ export class Renderer {
       [innerW / 2 - t / 2, 0, t, innerH],
     ];
     for (const [x, y, w, h] of parts) {
-      const mesh = new THREE.Mesh(geo, mat);
+      const mesh = new Mesh(geo, mat);
       mesh.position.set(x, y, -1);
       mesh.scale.set(w, h, 1);
       this.scene.add(mesh);

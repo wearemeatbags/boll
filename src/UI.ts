@@ -65,6 +65,17 @@ function button(label: string, parent: HTMLElement, onClick: () => void): HTMLBu
   return b;
 }
 
+function menuButton(
+  label: string,
+  className: string,
+  parent: HTMLElement,
+  onClick: () => void,
+): HTMLButtonElement {
+  const b = button(label, parent, onClick);
+  b.classList.add('mode-choice', className);
+  return b;
+}
+
 /** Retro DOM shell: HUD, state overlays, and the in-game menu panel. */
 export class UI {
   onSlider: (key: keyof PhysicsParams, value: number) => void = () => {};
@@ -93,6 +104,9 @@ export class UI {
   private hudSub: HTMLElement;
   private overlay: HTMLElement;
   private overlayCard: HTMLElement;
+  private countdown: HTMLElement;
+  private countdownCount: HTMLElement;
+  private countdownLabel: HTMLElement;
   private menuScrim: HTMLElement;
   private modeNote: HTMLElement;
   private modeButtons = new Map<Mode, HTMLButtonElement>();
@@ -124,6 +138,12 @@ export class UI {
 
     this.overlay = el('div', 'overlay', uiLayer);
     this.overlayCard = el('div', 'overlay-card', this.overlay);
+
+    this.countdown = el('div', 'countdown', uiLayer);
+    this.countdown.setAttribute('aria-live', 'polite');
+    this.countdown.hidden = true;
+    this.countdownCount = el('div', 'countdown-count', this.countdown);
+    this.countdownLabel = el('div', 'countdown-label', this.countdown);
 
     this.menuScrim = el('div', 'menu-scrim', uiLayer);
     this.menuScrim.hidden = true;
@@ -174,24 +194,39 @@ export class UI {
   }
 
   private buildMainMenu(card: HTMLElement, data?: OverlayData): void {
-    card.classList.add('overlay-menu-card');
+    card.classList.add('overlay-menu-card', 'main-menu-card');
     const stages = data?.stages ?? [];
     const records = data?.stageRecords ?? {};
     const cleared = stages.filter((stage) => (records[stage.id]?.medal ?? 0) > 0).length;
 
-      el('div', 'ov-title', card, 'BOLL');
-      el('div', 'ov-sub', card, 'PADDLE JUGGLE');
+    this.buildMenuSparks(card);
+    el('div', 'ov-title', card, 'BOLL');
+    el('div', 'ov-sub', card, 'PADDLE JUGGLE');
     el('div', 'ov-hint', card, 'FLICK UP FOR POWER - EASE DOWN TO CUSHION');
 
     const menu = el('div', 'main-menu', card);
-    button('ARCADE LADDER', menu, () => this.onShowStageSelect());
-    button('SCORE ATTACK', menu, () => this.onStartScoreAttack());
-    button('CHAOS CHALLENGE', menu, () => this.onStartChaos());
-    button('PRACTICE / ORIGINAL', menu, () => this.onStartPractice());
-    button('SETTINGS', menu, () => this.onSettings());
+    menuButton('ARCADE LADDER', 'mode-ladder', menu, () => this.onShowStageSelect());
+    menuButton('SCORE ATTACK', 'mode-score', menu, () => this.onStartScoreAttack());
+    menuButton('CHAOS CHALLENGE', 'mode-chaos', menu, () => this.onStartChaos());
+    menuButton('PRACTICE / ORIGINAL', 'mode-practice', menu, () => this.onStartPractice());
+    menuButton('SETTINGS', 'mode-settings', menu, () => this.onSettings());
 
     if (stages.length > 0) {
       el('div', 'ov-hint', card, `${cleared}/${stages.length} STAGES CLEAR`);
+    }
+  }
+
+  private buildMenuSparks(card: HTMLElement): void {
+    const sparks = el('div', 'menu-sparks', card);
+    sparks.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 18; i++) {
+      const spark = document.createElement('span');
+      spark.style.setProperty('--x', `${8 + Math.random() * 84}%`);
+      spark.style.setProperty('--y', `${14 + Math.random() * 70}%`);
+      spark.style.setProperty('--delay', `${Math.random() * -4}s`);
+      spark.style.setProperty('--dur', `${2.4 + Math.random() * 2.6}s`);
+      spark.style.setProperty('--light', `${58 + Math.random() * 34}%`);
+      sparks.appendChild(spark);
     }
   }
 
@@ -249,6 +284,16 @@ export class UI {
   hideOverlay(): void {
     this.overlay.hidden = true;
     this.uiLayer.classList.remove('overlay-open');
+  }
+
+  showCountdown(count: string, label: string): void {
+    this.countdown.hidden = false;
+    this.countdownCount.textContent = count;
+    this.countdownLabel.textContent = label;
+  }
+
+  hideCountdown(): void {
+    this.countdown.hidden = true;
   }
 
   // --- menu ------------------------------------------------------------------

@@ -5,7 +5,7 @@ export interface Vec2 {
 
 export type Mode = 'og' | 'waves' | 'rush' | 'chaos';
 export type BounceModel = 'og' | 'arcade';
-export type GameState = 'title' | 'playing' | 'paused' | 'gameover' | 'stageclear';
+export type GameState = 'title' | 'countdown' | 'playing' | 'paused' | 'gameover' | 'stageclear';
 export type PauseCause = 'user' | 'menu' | 'auto';
 export type RunKind = 'practice' | 'scoreAttack' | 'chaos' | 'stage';
 export type Medal = 0 | 1 | 2 | 3;

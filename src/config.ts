@@ -12,6 +12,7 @@ export const HALF_H = WORLD_H / 2;
 
 export const FIXED_STEP = 1 / 120;
 export const MAX_FRAME_DT = 0.05;
+export const RUN_COUNTDOWN_SECONDS = 1.8;
 
 // Paddle
 export const PADDLE_H = 2.8;
