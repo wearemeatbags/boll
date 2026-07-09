@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { BallView } from '../views/Ball';
+import { FX_CELEBRATE } from '../config';
 import type { Vec2 } from '../types';
 
 const POOL_SIZE = 200;
@@ -20,6 +20,7 @@ interface Particle {
   life: number;
   maxLife: number;
   size: number;
+  hex: number;
 }
 
 interface Popup {
@@ -49,11 +50,12 @@ export class Effects {
   private squashAmount = 0;
   private squashNx = 0;
   private squashNy = 1;
+  private squashIndex = -1;
   private popups: Popup[] = [];
 
   constructor(
     scene: THREE.Scene,
-    private ballView: BallView,
+    private ballSquash: (index: number, sx: number, sy: number) => void,
     fxLayer: HTMLElement,
     private worldToScreen: (x: number, y: number) => Vec2,
   ) {
@@ -70,7 +72,7 @@ export class Effects {
     this.mesh.frustumCulled = false;
     this.mesh.position.z = 1;
     for (let i = 0; i < POOL_SIZE; i++) {
-      this.particles.push({ x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 1 });
+      this.particles.push({ x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 1, hex: 0xffffff });
       this.dummy.scale.setScalar(0);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
@@ -89,8 +91,17 @@ export class Effects {
     }
   }
 
-  /** Spawn a fan of tiny white squares at (x, y) around normal (nx, ny). */
-  burst(x: number, y: number, count: number, speed: number, nx = 0, ny = 1): void {
+  /** Spawn a fan of tiny squares at (x, y) around normal (nx, ny). `color` may
+   * be a single hex or a palette to sample per-particle. */
+  burst(
+    x: number,
+    y: number,
+    count: number,
+    speed: number,
+    nx = 0,
+    ny = 1,
+    color: number | number[] = 0xffffff,
+  ): void {
     if (!this.enabled) return;
     const baseAngle = Math.atan2(ny, nx);
     for (let i = 0; i < count; i++) {
@@ -105,7 +116,19 @@ export class Effects {
       p.maxLife = 0.25 + Math.random() * 0.2;
       p.life = p.maxLife;
       p.size = 1.2 + Math.random();
+      p.hex = Array.isArray(color) ? color[Math.floor(Math.random() * color.length)]! : color;
     }
+  }
+
+  /** Arena-wide wave-clear celebration: a fan of colorful bursts plus a shake. */
+  celebrate(): void {
+    if (!this.enabled) return;
+    const xs = [-50, -25, 0, 25, 50];
+    for (const x of xs) {
+      const y = 5 + Math.random() * 25;
+      this.burst(x, y, 12, 120, 0, 1, FX_CELEBRATE);
+    }
+    this.shake(0.35);
   }
 
   shake(mag: number): void {
@@ -113,20 +136,27 @@ export class Effects {
     this.trauma = Math.min(1, this.trauma + mag);
   }
 
-  /** Squash along the impact normal (unit axis) for ~120ms. */
-  squash(nx: number, ny: number, amount: number): void {
+  /** Squash ball `ballIndex` along the impact normal (unit axis) for ~120ms.
+   * Only one ball can be squashed at a time; switching targets snaps the
+   * previous one back to (1, 1) first. */
+  squash(ballIndex: number, nx: number, ny: number, amount: number): void {
     if (!this.enabled) return;
+    if (this.squashIndex >= 0 && this.squashIndex !== ballIndex) {
+      this.ballSquash(this.squashIndex, 1, 1);
+    }
+    this.squashIndex = ballIndex;
     this.squashT = SQUASH_TIME;
     this.squashAmount = amount;
     this.squashNx = Math.abs(nx);
     this.squashNy = Math.abs(ny);
   }
 
-  popup(x: number, y: number, text: string): void {
+  popup(x: number, y: number, text: string, cssColor?: string): void {
     if (!this.enabled) return;
     let slot = this.popups.find((p) => !p.active);
     if (!slot) slot = this.popups[0]!;
     slot.el.textContent = text;
+    slot.el.style.color = cssColor ?? '';
     slot.x = x;
     slot.y = y;
     slot.t = 0;
@@ -173,7 +203,9 @@ export class Effects {
       this.dummy.scale.set(p.size * t, p.size * t, 1);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
-      this.mesh.setColorAt(i, this.color.setScalar(t));
+      // Additive blending on black: scaling the color toward black IS the
+      // fade, same trick as the old plain-white particles.
+      this.mesh.setColorAt(i, this.color.setHex(p.hex).multiplyScalar(t));
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
@@ -187,15 +219,13 @@ export class Effects {
   }
 
   private updateSquash(dt: number): void {
-    if (this.squashT <= 0) {
-      this.ballView.setSquash(1, 1);
-      return;
-    }
+    if (this.squashT <= 0) return;
     this.squashT = Math.max(0, this.squashT - dt);
     const k = this.squashAmount * (this.squashT / SQUASH_TIME);
     // Vertical impact: wide + short. Horizontal impact: narrow + tall.
     const axis = this.squashNy - this.squashNx;
-    this.ballView.setSquash(1 + k * axis, 1 - k * axis);
+    // At squashT === 0, k is 0 so this also snaps the ball back to (1, 1).
+    this.ballSquash(this.squashIndex, 1 + k * axis, 1 - k * axis);
   }
 
   private updatePopups(dt: number): void {
@@ -205,6 +235,7 @@ export class Effects {
       if (p.t >= POPUP_TIME) {
         p.active = false;
         p.el.style.opacity = '0';
+        p.el.style.color = '';
         continue;
       }
       const u = p.t / POPUP_TIME;
@@ -227,11 +258,13 @@ export class Effects {
     for (const p of this.popups) {
       p.active = false;
       p.el.style.opacity = '0';
+      p.el.style.color = '';
     }
     this.trauma = 0;
     this.shakeOffset.x = 0;
     this.shakeOffset.y = 0;
     this.squashT = 0;
-    this.ballView.setSquash(1, 1);
+    if (this.squashIndex >= 0) this.ballSquash(this.squashIndex, 1, 1);
+    this.squashIndex = -1;
   }
 }

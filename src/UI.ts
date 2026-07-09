@@ -1,7 +1,9 @@
-import { PRESETS, SLIDER_DEFS, type PresetName } from './config';
+import { MODE_LABELS, MODE_TAGLINES, PRESETS, SLIDER_DEFS, type PresetName } from './config';
 import type { Mode, PhysicsParams, Toggles } from './types';
 
 export type OverlayKind = 'title' | 'paused' | 'gameover';
+
+const MODE_ORDER: Mode[] = ['og', 'waves', 'rush', 'chaos'];
 
 export interface HudModel {
   best: number;
@@ -10,6 +12,14 @@ export interface HudModel {
   combo: number;
   mult: number;
   comboVisible: boolean;
+  sub: string;
+}
+
+export interface OverlayData {
+  mode?: Mode;
+  heading?: string;
+  score?: number;
+  best?: number;
 }
 
 interface ToggleDef {
@@ -64,15 +74,25 @@ export class UI {
   private hudScore: HTMLElement;
   private hudSpd: HTMLElement;
   private hudCombo: HTMLElement;
+  private hudSub: HTMLElement;
   private overlay: HTMLElement;
   private overlayCard: HTMLElement;
   private menuScrim: HTMLElement;
+  private modeNote: HTMLElement;
   private modeButtons = new Map<Mode, HTMLButtonElement>();
   private toggleButtons = new Map<keyof Toggles, HTMLButtonElement>();
   private sliderInputs = new Map<keyof PhysicsParams, HTMLInputElement>();
   private sliderValues = new Map<keyof PhysicsParams, HTMLElement>();
   private sliderRows = new Map<keyof PhysicsParams, HTMLElement>();
-  private lastHud: HudModel = { best: -1, score: -1, spd: -1, combo: -1, mult: -1, comboVisible: false };
+  private lastHud: HudModel = {
+    best: -1,
+    score: -1,
+    spd: -1,
+    combo: -1,
+    mult: -1,
+    comboVisible: false,
+    sub: '',
+  };
 
   constructor(uiLayer: HTMLElement) {
     this.hudBest = el('div', 'hud-best', uiLayer, 'BEST 0');
@@ -80,6 +100,8 @@ export class UI {
     this.hudSpd = el('div', 'hud-spd', uiLayer, 'SPD 0');
     this.hudCombo = el('div', 'hud-combo', uiLayer, '');
     this.hudCombo.style.display = 'none';
+    this.hudSub = el('div', 'hud-sub', uiLayer, '');
+    this.hudSub.style.display = 'none';
     const menuBtn = button('MENU', uiLayer, () => this.onMenuOpen());
     menuBtn.classList.add('hud-menu');
     menuBtn.setAttribute('aria-label', 'Open game menu');
@@ -89,7 +111,7 @@ export class UI {
 
     this.menuScrim = el('div', 'menu-scrim', uiLayer);
     this.menuScrim.hidden = true;
-    this.buildMenu(this.menuScrim);
+    this.modeNote = this.buildMenu(this.menuScrim);
   }
 
   // --- HUD -----------------------------------------------------------------
@@ -105,19 +127,25 @@ export class UI {
     if (m.comboVisible !== last.comboVisible) {
       this.hudCombo.style.display = m.comboVisible ? '' : 'none';
     }
+    if (m.sub !== last.sub) {
+      this.hudSub.textContent = m.sub;
+      this.hudSub.style.display = m.sub ? '' : 'none';
+    }
     this.lastHud = { ...m };
   }
 
   // --- overlays --------------------------------------------------------------
 
-  showOverlay(kind: OverlayKind, data?: { score: number; best: number }): void {
+  showOverlay(kind: OverlayKind, data?: OverlayData): void {
     this.overlay.hidden = false;
     const card = this.overlayCard;
     card.textContent = '';
     if (kind === 'title') {
+      const mode = data?.mode ?? 'og';
       el('div', 'ov-title', card, 'BOLL');
       el('div', 'ov-sub', card, 'PADDLE JUGGLE');
       el('div', 'ov-blink', card, 'CLICK OR TAP TO SERVE');
+      el('div', 'ov-hint', card, `${MODE_LABELS[mode]} · ${MODE_TAGLINES[mode]}`);
       const hint = el('div', 'ov-hint', card);
       hint.append(
         'MOVE THE PADDLE TO JUGGLE THE BALL',
@@ -130,8 +158,10 @@ export class UI {
       el('div', 'ov-big', card, 'PAUSED');
       el('div', 'ov-blink', card, 'P OR CLICK TO RESUME');
     } else {
-      el('div', 'ov-big', card, 'MISS');
-      if (data) el('div', 'ov-score', card, `SCORE ${data.score} · BEST ${data.best}`);
+      el('div', 'ov-big', card, data?.heading ?? 'MISS');
+      if (data?.score !== undefined && data.best !== undefined) {
+        el('div', 'ov-score', card, `SCORE ${data.score} · BEST ${data.best}`);
+      }
       el('div', 'ov-blink', card, 'TAP TO SERVE AGAIN');
     }
   }
@@ -172,27 +202,19 @@ export class UI {
     for (const [m, btn] of this.modeButtons) {
       btn.classList.toggle('active', m === mode);
     }
+    this.modeNote.textContent = MODE_TAGLINES[mode];
   }
 
-  private buildMenu(scrim: HTMLElement): void {
+  private buildMenu(scrim: HTMLElement): HTMLElement {
     const card = el('div', 'menu-card', scrim);
     el('div', 'menu-title', card, 'BOLL SETTINGS');
 
     // Mode
     const modeGroup = el('div', 'menu-group', card);
-    const modes: Array<[Mode, string]> = [
-      ['og', 'OG'],
-      ['arcade', 'ARCADE'],
-    ];
-    for (const [mode, label] of modes) {
-      this.modeButtons.set(mode, button(label, modeGroup, () => this.onMode(mode)));
+    for (const mode of MODE_ORDER) {
+      this.modeButtons.set(mode, button(MODE_LABELS[mode], modeGroup, () => this.onMode(mode)));
     }
-    el(
-      'div',
-      'mode-note',
-      card,
-      'OG: THE ORIGINAL JUGGLE · ARCADE: COMBOS, SWEET SPOT, GATES, RISING DIFFICULTY',
-    );
+    const modeNote = el('div', 'mode-note', card, MODE_TAGLINES.og);
 
     // Sliders
     for (const def of SLIDER_DEFS) {
@@ -237,5 +259,7 @@ export class UI {
     button('RESET DEFAULTS', actions, () => this.onResetDefaults());
     button('RESTART', actions, () => this.onRestart());
     button('DONE', actions, () => this.onMenuClose());
+
+    return modeNote;
   }
 }

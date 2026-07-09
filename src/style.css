@@ -138,6 +138,17 @@ body {
   text-align: right;
 }
 
+.hud-sub {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  letter-spacing: 2px;
+  opacity: 0.85;
+  font-weight: 700;
+}
+
 /* With the CRT on, the corners curve inward: pull every HUD anchor toward
    the visible glass area (scaled by the corner radius set at resize). */
 .crt-on .hud-best {
@@ -162,6 +173,10 @@ body {
 
 .crt-on .hud-score {
   top: calc(6px + var(--crt-radius, 12px) * 0.25);
+}
+
+.crt-on .hud-sub {
+  top: calc(56px + var(--crt-radius, 12px) * 0.25);
 }
 
 /* --- buttons ---------------------------------------------------------------- */

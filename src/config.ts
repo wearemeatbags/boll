@@ -38,6 +38,10 @@ export const TARGET_Y_MAX = 25;
 export const TOUCH_LIFT = 13;
 export const MISS_Y = -50;
 
+// Extra balls (CHAOS) spawn near the ceiling with a gentle drift.
+export const SPAWN_X_RANGE = 30;
+export const SPAWN_Y = 40;
+
 // OG bounce model (x0.2 ports of the validated HTML prototype)
 export const OG_STEER = 36;
 export const OG_VX_CLAMP = 300;
@@ -115,32 +119,94 @@ export const MODES: Record<Mode, ModeConfig> = {
     scoring: 'hits',
     combo: false,
     gates: false,
-    difficulty: false,
     sweetSpotVisible: false,
     hudCombo: false,
+    waves: false,
+    timer: false,
+    multiball: false,
+    colorFx: false,
   },
-  arcade: {
-    id: 'arcade',
+  waves: {
+    id: 'waves',
     bounceModel: 'arcade',
     scoring: 'points',
     combo: true,
     gates: true,
-    difficulty: true,
     sweetSpotVisible: true,
     hudCombo: true,
+    waves: true,
+    timer: false,
+    multiball: false,
+    colorFx: true,
+  },
+  rush: {
+    id: 'rush',
+    bounceModel: 'arcade',
+    scoring: 'points',
+    combo: true,
+    gates: true,
+    sweetSpotVisible: true,
+    hudCombo: true,
+    waves: false,
+    timer: true,
+    multiball: false,
+    colorFx: true,
+  },
+  chaos: {
+    id: 'chaos',
+    bounceModel: 'arcade',
+    scoring: 'points',
+    combo: true,
+    gates: false,
+    sweetSpotVisible: true,
+    hudCombo: true,
+    waves: false,
+    timer: false,
+    multiball: true,
+    colorFx: true,
   },
 };
 
-// Difficulty curve (ARCADE only)
-export const DIFF_TIME = 90;
-export const DIFF_HITS = 70;
-export const DIFF_TIME_WEIGHT = 0.65;
-export const DIFF_HITS_WEIGHT = 0.35;
-export const DIFF_PADDLE_SHRINK = 0.32;
-export const DIFF_PACE_RISE = 0.4;
-export const DIFF_GATE_SHRINK = 0.35;
+export const MODE_LABELS: Record<Mode, string> = {
+  og: 'OG',
+  waves: 'WAVES',
+  rush: 'RUSH',
+  chaos: 'CHAOS',
+};
 
-// Gates
+export const MODE_TAGLINES: Record<Mode, string> = {
+  og: 'THE ORIGINAL JUGGLE',
+  waves: 'CLEAR WAVES · PACE RISES · PADDLE SHRINKS',
+  rush: '60 SECONDS · MISSES COST 5S · GO',
+  chaos: 'MULTIBALL · EVERY 12 HITS ADDS A BALL',
+};
+
+// WAVES: per-wave ramp. Wave 1 is gentler than the old arcade start, then the
+// pace floor and paddle shrink ramp over WAVE_RAMP_WAVES waves.
+export const WAVE_BASE_HITS = 8;
+export const WAVE_HITS_INC = 2;
+export const WAVE_HITS_MAX = 20;
+export const WAVE_RAMP_WAVES = 8;
+export const WAVE_PACE_MIN = 0.85;
+export const WAVE_PACE_MAX = 1.4;
+export const WAVE_PADDLE_SHRINK = 0.32;
+export const WAVE_BONUS = 100;
+
+// RUSH
+export const RUSH_TIME = 60;
+export const RUSH_MISS_PENALTY = 5;
+export const RUSH_RESERVE_DELAY = 0.8;
+export const RUSH_PACE = 1.1;
+export const RUSH_GATE_SCORE = 75;
+export const RUSH_GATE_PROGRESS = 0.35;
+export const RUSH_TICK_FROM = 5;
+
+// CHAOS
+export const CHAOS_MAX_BALLS = 4;
+export const CHAOS_HITS_PER_BALL = 12;
+export const CHAOS_PACE_PER_BALL = 0.08;
+
+// Gates (shared)
 export const GATE_W = 17;
 export const GATE_H = 11;
 export const GATE_FRAME = 1.2;
@@ -148,13 +214,23 @@ export const GATE_BOB_AMP = 1.5;
 export const GATE_BOB_PERIOD = 2.7;
 export const GATE_COOLDOWN = 0.8;
 export const GATE_FADE_OPACITY = 0.35;
+export const DIFF_GATE_SHRINK = 0.35;
 
-// Scoring (ARCADE)
+// Scoring
 export const SCORE_PADDLE = 10;
 export const SCORE_SWEET = 25;
 export const SCORE_GATE = 50;
 export const COMBO_MAX_MULT = 10;
 export const COMBO_PER_MULT = 5;
+
+// Particle palette (phosphor arcade). OG mode ignores these and stays white.
+export const FX_WHITE = 0xffffff;
+export const FX_SWEET = 0xffc843;
+export const FX_WALL = 0x53d8ff;
+export const FX_GATE = 0xff4fd8;
+export const FX_BALL_GAIN = 0x6dff7c;
+export const FX_BALL_LOST = 0xff5544;
+export const FX_CELEBRATE: number[] = [0x53d8ff, 0xffc843, 0xff4fd8, 0x6dff7c, 0xffffff];
 
 export function clamp(v: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, v));

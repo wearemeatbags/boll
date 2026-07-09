@@ -3,7 +3,7 @@ export interface Vec2 {
   y: number;
 }
 
-export type Mode = 'og' | 'arcade';
+export type Mode = 'og' | 'waves' | 'rush' | 'chaos';
 export type BounceModel = 'og' | 'arcade';
 export type GameState = 'title' | 'playing' | 'paused' | 'gameover';
 export type PauseCause = 'user' | 'menu' | 'auto';
@@ -38,18 +38,27 @@ export interface PhysicsParams {
   minBounceVy: number;
 }
 
-/** Params derived per fixed step from mode + difficulty. */
+/** Params derived per fixed step from mode rules (waves, timer, ball count). */
 export interface DerivedParams {
   bounceModel: BounceModel;
   paddleWEff: number;
   minBounceVyEff: number;
 }
 
+/** Every event carries the index of the ball that produced it. */
 export type PhysicsEvent =
-  | { type: 'wall'; x: number; y: number; nx: number; ny: number }
-  | { type: 'paddleHit'; x: number; y: number; offset: number; sweet: boolean; outSpeed: number }
-  | { type: 'carry' }
-  | { type: 'miss'; x: number };
+  | { type: 'wall'; ball: number; x: number; y: number; nx: number; ny: number }
+  | {
+      type: 'paddleHit';
+      ball: number;
+      x: number;
+      y: number;
+      offset: number;
+      sweet: boolean;
+      outSpeed: number;
+    }
+  | { type: 'carry'; ball: number }
+  | { type: 'miss'; ball: number; x: number };
 
 /** One fixed step's worth of control input, produced by InputController.sample(). */
 export interface ControlFrame {
@@ -68,9 +77,16 @@ export interface ModeConfig {
   scoring: 'hits' | 'points';
   combo: boolean;
   gates: boolean;
-  difficulty: boolean;
   sweetSpotVisible: boolean;
   hudCombo: boolean;
+  /** Wave progression: hit quotas, celebrations, per-wave pace ramp. */
+  waves: boolean;
+  /** Countdown timer run (RUSH): misses cost time instead of ending the run. */
+  timer: boolean;
+  /** Multi-ball (CHAOS): extra balls spawn as you rack up hits. */
+  multiball: boolean;
+  /** Colored particles; OG keeps everything white. */
+  colorFx: boolean;
 }
 
 export interface Toggles {

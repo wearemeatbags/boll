@@ -1,4 +1,4 @@
-# BOLL — Paddle Juggle
+# BOLL: Paddle Juggle
 
 A retro CRT arcade juggling game: one paddle, one square ball, keep it alive.
 Built with Vite, TypeScript (strict), and three.js. Black screen, white shapes,
@@ -6,14 +6,17 @@ square-wave beeps, looping soundtrack, and a proper curved-glass CRT filter.
 
 Play it at <https://wearemeatbags.github.io/boll/>.
 
-Two ways to play, switchable in the menu:
+Four ways to play, switchable in the menu:
 
 - **OG** (default): a faithful port of the original single-file prototype.
   The paddle follows your pointer in **both** directions. Flick up for power,
   ease down to cushion. Score = paddle hits.
-- **ARCADE**: same core mechanic plus a combo system, a marked sweet spot,
-  two floating target gates, points with multipliers, and a difficulty curve
-  that slowly turns the screws.
+- **WAVES**: clear hit quotas to advance waves. Each wave raises the pace
+  floor and shrinks the paddle a little more, up to a cap, then holds steady.
+- **RUSH**: a 60 second sprint. Misses cost 5 seconds instead of ending the
+  run, so keep the ball alive and chase points before the clock hits zero.
+- **CHAOS**: multiball. Every 12 paddle hits adds another ball (up to 4), and
+  each extra ball raises the pace. Lose one and keep going as long as one remains.
 
 ## Run it
 
@@ -63,18 +66,30 @@ it lands. Landing off-center steers the ball harder toward that side.
 **Carry / cushion**: meet a slow ball with a gentle paddle and it will settle
 and ride the paddle instead of bouncing; ease under a falling ball to catch it.
 
-**ARCADE mode adds:**
+**WAVES, RUSH, and CHAOS share an arcade layer** on top of the same bounce
+model:
 
 - **Sweet spot**: the center 30% of the paddle (marked by ticks). Sweet hits
   score 25 base (vs 10), count double toward the combo, and give a controlled,
   mostly-your-motion bounce. Edge hits launch sharper, riskier angles.
 - **Combo**: every paddle hit extends it (+2 sweet / +1 normal). Multiplier is
   `min(10, 1 + floor(combo / 5))`. Missing the ball resets it.
-- **Target gates**: two floating hollow rectangles. Put the ball through one
-  for 50 x multiplier. A scored gate flashes, cools down for 0.8 s, and moves.
-- **Difficulty**: a smooth curve driven by survival time and paddle hits.
-  The pace floor rises up to +40%, the paddle shrinks up to −32%, and the
-  gates shrink and drift toward the walls. It never spikes; it creeps.
+- **Target gates**: two floating hollow rectangles (WAVES and RUSH only, off
+  in CHAOS). Put the ball through one for points x multiplier. A scored gate
+  flashes, cools down for 0.8 s, and moves.
+
+**Per-mode rules on top of that:**
+
+- **WAVES**: clear a hit quota to advance to the next wave. The quota grows
+  each wave up to a cap; each wave also raises the pace floor and shrinks the
+  paddle a little more, up to a limit, then holds steady. Clearing a wave pays
+  a bonus and triggers a celebration. Missing the ball ends the run.
+- **RUSH**: a 60 second countdown. Missing costs 5 seconds off the clock and
+  respawns the ball after a short delay instead of ending the run outright.
+  The run ends when the clock reaches zero.
+- **CHAOS**: every 12 paddle hits adds another ball, up to 4 on screen at
+  once, and each extra ball in play raises the pace. Losing a ball is safe as
+  long as another is still live; losing the last one ends the run.
 
 Best scores are stored per mode in `localStorage`.
 
@@ -83,10 +98,10 @@ Best scores are stored per mode in `localStorage`.
 MENU (top-right) pauses the game while open and resumes when closed (if the
 menu is what paused it). It contains:
 
-- **Mode**: OG / ARCADE
+- **Mode**: OG / WAVES / RUSH / CHAOS
 - **Live physics sliders**: gravity, bounce, ball size, paddle power
-  (momentum transfer), air drag, paddle width, paddle speed (keyboard), and —
-  in ARCADE — max ball speed and minimum bounce velocity
+  (momentum transfer), air drag, paddle width, paddle speed (keyboard); WAVES,
+  RUSH, and CHAOS also expose max ball speed and minimum bounce velocity
 - **Presets**: CLASSIC, MOON, FLUBBER, BRICK
 - **Toggles**: KEYS, MOUSE, FX (particles/shake/squash/popups), CRT (the whole
   filter, including rounded corners and vignette), SFX, MUSIC
@@ -106,14 +121,14 @@ units, +y up; the legacy prototype's pixel values map at 0.2 units per pixel.
 | AIR DRAG | 0 | Slows everything; MOON-ish floatiness |
 | PADDLE W | 22 | Wider = easier, weaker steering leverage |
 | PADDLE SPD | 150 | Keyboard speed only; pointer pursuit is fixed |
-| MAX BALL SPD | 400 | ARCADE ceiling on total speed |
-| MIN BOUNCE VY | 150 | ARCADE pace floor; difficulty scales it up |
+| MAX BALL SPD | 400 | Ceiling on total ball speed (WAVES/RUSH/CHAOS) |
+| MIN BOUNCE VY | 150 | Pace floor (WAVES/RUSH/CHAOS); each mode scales it its own way |
 
 Deeper knobs in code: pursuit stiffness (`PURSUIT_RATE`), carry thresholds
-(`CARRY_REL`, `CARRY_PADDLE_VY`), sweet-spot width (`SWEET_ZONE`), difficulty
-weights (`DIFF_*`), gate geometry (`GATE_*`), CRT shader strengths (top of
-[src/render/CrtShader.ts](src/render/CrtShader.ts)), and the SFX cue table in
-[src/audio/Sound.ts](src/audio/Sound.ts).
+(`CARRY_REL`, `CARRY_PADDLE_VY`), sweet-spot width (`SWEET_ZONE`), per-mode
+pacing (`WAVE_*`, `RUSH_*`, `CHAOS_*`), gate geometry (`GATE_*`), CRT shader
+strengths (top of [src/render/CrtShader.ts](src/render/CrtShader.ts)), and
+the SFX cue table in [src/audio/Sound.ts](src/audio/Sound.ts).
 
 ## Project structure
 
@@ -128,10 +143,9 @@ src/
   UI.ts                HUD, overlays, menu (DOM)
   Storage.ts           localStorage save data
   ComboSystem.ts       combo + multiplier
-  DifficultySystem.ts  smooth difficulty curve
   render/Renderer.ts   letterboxed stage, render target, CRT pass
   render/CrtShader.ts  the CRT fragment shader (tuning constants up top)
-  views/               Ball, Paddle, TargetGate (three.js meshes)
+  views/               Ball (multiball set), Paddle, TargetGate (three.js meshes)
   fx/Effects.ts        particles, camera shake, squash, score popups
   audio/               shared AudioContext, gapless music loop, SFX cues
 public/audio/boll.m4a  looping soundtrack (AAC, gapless)

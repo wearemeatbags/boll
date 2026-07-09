@@ -7,7 +7,12 @@ export type SfxCue =
   | 'gate'
   | 'multiplier'
   | 'serve'
-  | 'miss';
+  | 'miss'
+  | 'wave'
+  | 'ballGain'
+  | 'ballLost'
+  | 'tick'
+  | 'timeUp';
 
 interface Note {
   f: number;
@@ -38,6 +43,26 @@ const CUES: Record<SfxCue, Note[]> = {
   miss: [
     { f: 170, at: 0, d: 0.12, v: 0.05 },
     { f: 110, at: 0.1, d: 0.25, v: 0.05 },
+  ],
+  wave: [
+    { f: 460, at: 0, d: 0.05, v: 0.045 },
+    { f: 580, at: 0.06, d: 0.05, v: 0.045 },
+    { f: 690, at: 0.12, d: 0.05, v: 0.045 },
+    { f: 920, at: 0.18, d: 0.12, v: 0.045 },
+  ],
+  ballGain: [
+    { f: 340, at: 0, d: 0.05, v: 0.045 },
+    { f: 680, at: 0.07, d: 0.1, v: 0.045 },
+  ],
+  ballLost: [
+    { f: 220, at: 0, d: 0.08, v: 0.05 },
+    { f: 160, at: 0.08, d: 0.16, v: 0.05 },
+  ],
+  tick: [{ f: 880, at: 0, d: 0.03, v: 0.03 }],
+  timeUp: [
+    { f: 300, at: 0, d: 0.1, v: 0.05 },
+    { f: 220, at: 0.12, d: 0.1, v: 0.05 },
+    { f: 150, at: 0.26, d: 0.3, v: 0.05 },
   ],
 };
 

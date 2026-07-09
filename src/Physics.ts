@@ -20,6 +20,8 @@ import {
   SERVE_MAX_Y,
   SERVE_RISE,
   SERVE_VX,
+  SPAWN_X_RANGE,
+  SPAWN_Y,
   SWEET_ZONE,
   ARCADE_VX_FRACTION,
   TARGET_Y_MAX,
@@ -38,32 +40,59 @@ import type {
 import type { BallState, PaddleState } from './types';
 
 export interface PhysicsWorld {
-  ball: BallState;
+  /** Index 0 always exists. */
+  balls: BallState[];
+  /** Position snapshots from the start of the last step, for render interpolation. */
+  prevBalls: Vec2[];
   paddle: PaddleState;
   ballMode: 'ready' | 'live';
-  /** Position snapshots from the start of the last step, for render interpolation. */
-  prevBall: Vec2;
   prevPaddle: Vec2;
 }
 
 export function createWorld(p: PhysicsParams): PhysicsWorld {
   return {
-    ball: { x: 0, y: PADDLE_REST_Y + SERVE_RISE, vx: 0, vy: 0, r: p.ballDiameter / 2 },
+    balls: [{ x: 0, y: PADDLE_REST_Y + SERVE_RISE, vx: 0, vy: 0, r: p.ballDiameter / 2 }],
+    prevBalls: [{ x: 0, y: PADDLE_REST_Y + SERVE_RISE }],
     paddle: { x: 0, y: PADDLE_REST_Y, w: p.paddleW, h: PADDLE_H, vx: 0, vy: 0 },
     ballMode: 'ready',
-    prevBall: { x: 0, y: PADDLE_REST_Y + SERVE_RISE },
     prevPaddle: { x: 0, y: PADDLE_REST_Y },
   };
 }
 
 export function serve(w: PhysicsWorld, targetX: number, targetY: number): void {
-  w.ball.x = targetX;
-  w.ball.y = Math.min(SERVE_MAX_Y, targetY + SERVE_RISE);
-  w.ball.vx = (Math.random() * 2 - 1) * SERVE_VX;
-  w.ball.vy = 0;
+  w.balls.length = 1;
+  w.prevBalls.length = 1;
+  const ball = w.balls[0];
+  ball.x = targetX;
+  ball.y = Math.min(SERVE_MAX_Y, targetY + SERVE_RISE);
+  ball.vx = (Math.random() * 2 - 1) * SERVE_VX;
+  ball.vy = 0;
   w.ballMode = 'live';
-  w.prevBall.x = w.ball.x;
-  w.prevBall.y = w.ball.y;
+  w.prevBalls[0].x = ball.x;
+  w.prevBalls[0].y = ball.y;
+}
+
+export function resetToReady(w: PhysicsWorld): void {
+  w.balls.length = 1;
+  w.prevBalls.length = 1;
+  w.ballMode = 'ready';
+}
+
+export function spawnBall(w: PhysicsWorld, p: PhysicsParams): void {
+  const ball: BallState = {
+    x: (Math.random() * 2 - 1) * SPAWN_X_RANGE,
+    y: SPAWN_Y,
+    vx: (Math.random() * 2 - 1) * SERVE_VX,
+    vy: 0,
+    r: p.ballDiameter / 2,
+  };
+  w.balls.push(ball);
+  w.prevBalls.push({ x: ball.x, y: ball.y });
+}
+
+export function removeBall(w: PhysicsWorld, index: number): void {
+  w.balls.splice(index, 1);
+  w.prevBalls.splice(index, 1);
 }
 
 export function stepPhysics(
@@ -74,19 +103,21 @@ export function stepPhysics(
   h: number,
   out: PhysicsEvent[],
 ): void {
-  const ball = w.ball;
   const paddle = w.paddle;
   paddle.w = d.paddleWEff;
-  ball.r = p.ballDiameter / 2;
-
-  w.prevBall.x = ball.x;
-  w.prevBall.y = ball.y;
-  w.prevPaddle.x = paddle.x;
-  w.prevPaddle.y = paddle.y;
 
   // Capture BEFORE anything moves this step (the sweep test depends on it).
+  const prevBallBottom: number[] = new Array(w.balls.length);
+  for (let i = 0; i < w.balls.length; i++) {
+    const ball = w.balls[i];
+    ball.r = p.ballDiameter / 2;
+    w.prevBalls[i].x = ball.x;
+    w.prevBalls[i].y = ball.y;
+    prevBallBottom[i] = ball.y - ball.r;
+  }
+  w.prevPaddle.x = paddle.x;
+  w.prevPaddle.y = paddle.y;
   const prevPaddleTop = paddle.y + paddle.h / 2;
-  const prevBallBottom = ball.y - ball.r;
 
   // --- paddle motion -------------------------------------------------------
   const k = 1 - Math.exp(-PURSUIT_RATE * h);
@@ -110,7 +141,9 @@ export function stepPhysics(
   paddle.vy += (instVy - paddle.vy) * PADDLE_V_ALPHA;
 
   // --- ready: ball hovers above the paddle waiting for serve ---------------
+  // Only ball 0 hovers; other balls shouldn't exist in ready mode anyway.
   if (w.ballMode === 'ready') {
+    const ball = w.balls[0];
     ball.x += (paddle.x - ball.x) * Math.min(1, 10 * h);
     ball.y = Math.min(paddle.y + SERVE_RISE, HOVER_MAX_Y);
     ball.vx = 0;
@@ -118,53 +151,59 @@ export function stepPhysics(
     return;
   }
 
-  // --- integrate ball ------------------------------------------------------
-  ball.vy -= p.gravity * h;
-  const dragDecay = Math.max(0, 1 - p.drag * 1.5 * h);
-  ball.vx *= dragDecay;
-  ball.vy *= dragDecay;
-  ball.x += ball.vx * h;
-  ball.y += ball.vy * h;
-
-  // --- walls (reflect only when moving into the wall) ----------------------
+  // --- live: integrate + collide each ball independently (no ball-ball) ----
   const wr = clamp(p.restitution, WALL_REST_MIN, WALL_REST_MAX);
-  if (ball.x - ball.r < -HALF_W) {
-    ball.x = -HALF_W + ball.r;
-    if (ball.vx < 0) {
-      ball.vx = -ball.vx * wr;
-      out.push({ type: 'wall', x: -HALF_W, y: ball.y, nx: 1, ny: 0 });
-    }
-  } else if (ball.x + ball.r > HALF_W) {
-    ball.x = HALF_W - ball.r;
-    if (ball.vx > 0) {
-      ball.vx = -ball.vx * wr;
-      out.push({ type: 'wall', x: HALF_W, y: ball.y, nx: -1, ny: 0 });
-    }
-  }
-  if (ball.y + ball.r > HALF_H) {
-    ball.y = HALF_H - ball.r;
-    if (ball.vy > 0) {
-      ball.vy = -ball.vy * wr;
-      out.push({ type: 'wall', x: ball.x, y: HALF_H, nx: 0, ny: -1 });
-    }
-  }
+  for (let i = 0; i < w.balls.length; i++) {
+    const ball = w.balls[i];
 
-  paddleHit(w, p, d, prevPaddleTop, prevBallBottom, out);
+    // --- integrate ball ------------------------------------------------------
+    ball.vy -= p.gravity * h;
+    const dragDecay = Math.max(0, 1 - p.drag * 1.5 * h);
+    ball.vx *= dragDecay;
+    ball.vy *= dragDecay;
+    ball.x += ball.vx * h;
+    ball.y += ball.vy * h;
 
-  if (ball.y + ball.r < MISS_Y) {
-    out.push({ type: 'miss', x: ball.x });
+    // --- walls (reflect only when moving into the wall) ----------------------
+    if (ball.x - ball.r < -HALF_W) {
+      ball.x = -HALF_W + ball.r;
+      if (ball.vx < 0) {
+        ball.vx = -ball.vx * wr;
+        out.push({ type: 'wall', ball: i, x: -HALF_W, y: ball.y, nx: 1, ny: 0 });
+      }
+    } else if (ball.x + ball.r > HALF_W) {
+      ball.x = HALF_W - ball.r;
+      if (ball.vx > 0) {
+        ball.vx = -ball.vx * wr;
+        out.push({ type: 'wall', ball: i, x: HALF_W, y: ball.y, nx: -1, ny: 0 });
+      }
+    }
+    if (ball.y + ball.r > HALF_H) {
+      ball.y = HALF_H - ball.r;
+      if (ball.vy > 0) {
+        ball.vy = -ball.vy * wr;
+        out.push({ type: 'wall', ball: i, x: ball.x, y: HALF_H, nx: 0, ny: -1 });
+      }
+    }
+
+    paddleHit(w, i, p, d, prevPaddleTop, prevBallBottom[i], out);
+
+    if (ball.y + ball.r < MISS_Y) {
+      out.push({ type: 'miss', ball: i, x: ball.x });
+    }
   }
 }
 
 function paddleHit(
   w: PhysicsWorld,
+  index: number,
   p: PhysicsParams,
   d: DerivedParams,
   prevPaddleTop: number,
   prevBallBottom: number,
   out: PhysicsEvent[],
 ): void {
-  const ball = w.ball;
+  const ball = w.balls[index];
   const paddle = w.paddle;
   const half = paddle.w / 2;
   const top = paddle.y + paddle.h / 2;
@@ -191,7 +230,7 @@ function paddleHit(
     ball.y = top + r;
     ball.vy = paddle.vy;
     ball.vx = ball.vx * 0.9 + paddle.vx * 0.1;
-    out.push({ type: 'carry' });
+    out.push({ type: 'carry', ball: index });
     return;
   }
 
@@ -230,6 +269,7 @@ function paddleHit(
   ball.y = top + r + REST_OFFSET;
   out.push({
     type: 'paddleHit',
+    ball: index,
     x: ball.x,
     y: top,
     offset: off,

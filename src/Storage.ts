@@ -4,9 +4,11 @@ import type { Mode, PhysicsParams, Toggles } from './types';
 const KEY = 'boll.pj2.v1';
 const SAVE_DEBOUNCE_MS = 250;
 
+const MODE_IDS: Mode[] = ['og', 'waves', 'rush', 'chaos'];
+
 export interface SaveData {
-  version: 1;
-  best: { og: number; arcade: number };
+  version: 2;
+  best: Record<Mode, number>;
   settings: {
     mode: Mode;
     toggles: Toggles;
@@ -16,8 +18,8 @@ export interface SaveData {
 
 function defaults(): SaveData {
   return {
-    version: 1,
-    best: { og: 0, arcade: 0 },
+    version: 2,
+    best: { og: 0, waves: 0, rush: 0, chaos: 0 },
     settings: {
       mode: 'og',
       toggles: { keyboard: true, mouse: true, effects: true, crt: true, sfx: true, music: true },
@@ -41,11 +43,21 @@ function sanitize(raw: unknown): SaveData {
   const o = raw as Record<string, unknown>;
 
   const best = (o['best'] ?? {}) as Record<string, unknown>;
-  d.best.og = asScore(best['og']);
-  d.best.arcade = asScore(best['arcade']);
+  for (const mode of MODE_IDS) {
+    d.best[mode] = asScore(best[mode]);
+  }
+  // v1 migration: the old ARCADE mode evolved into WAVES.
+  if (d.best.waves === 0 && best['arcade'] !== undefined) {
+    d.best.waves = asScore(best['arcade']);
+  }
 
   const settings = (o['settings'] ?? {}) as Record<string, unknown>;
-  if (settings['mode'] === 'arcade') d.settings.mode = 'arcade';
+  const mode = settings['mode'];
+  if (typeof mode === 'string' && (MODE_IDS as string[]).includes(mode)) {
+    d.settings.mode = mode as Mode;
+  } else if (mode === 'arcade') {
+    d.settings.mode = 'waves';
+  }
 
   const toggles = (settings['toggles'] ?? {}) as Record<string, unknown>;
   for (const key of Object.keys(d.settings.toggles) as Array<keyof Toggles>) {

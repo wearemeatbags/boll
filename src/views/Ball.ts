@@ -1,38 +1,61 @@
 import * as THREE from 'three';
-import type { Vec2 } from '../types';
+import type { BallState, Vec2 } from '../types';
 
-/** The ball is a white SQUARE, exactly like the OG fillRect ball. */
-export class BallView {
-  private mesh: THREE.Mesh;
+const DEFAULT_MAX_BALLS = 4;
+
+/** Pool of white SQUARE ball meshes, exactly like the OG fillRect ball. */
+export class BallSetView {
+  private meshes: THREE.Mesh[] = [];
+  private squashX: number[] = [];
+  private squashY: number[] = [];
   private diameter = 4.4;
-  private squashX = 1;
-  private squashY = 1;
+  private masterVisible = true;
 
-  constructor(scene: THREE.Scene) {
-    this.mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({ color: 0xffffff }),
-    );
-    this.mesh.position.z = 0;
-    scene.add(this.mesh);
+  constructor(scene: THREE.Scene, max = DEFAULT_MAX_BALLS) {
+    for (let i = 0; i < max; i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+      );
+      mesh.position.z = 0;
+      mesh.visible = false;
+      scene.add(mesh);
+      this.meshes.push(mesh);
+      this.squashX.push(1);
+      this.squashY.push(1);
+    }
   }
 
   setDiameter(d: number): void {
     this.diameter = d;
   }
 
-  setSquash(sx: number, sy: number): void {
-    this.squashX = sx;
-    this.squashY = sy;
-  }
-
   setVisible(v: boolean): void {
-    this.mesh.visible = v;
+    this.masterVisible = v;
+    if (!v) {
+      for (const mesh of this.meshes) mesh.visible = false;
+    }
   }
 
-  sync(prev: Vec2, curr: Vec2, alpha: number): void {
-    this.mesh.position.x = prev.x + (curr.x - prev.x) * alpha;
-    this.mesh.position.y = prev.y + (curr.y - prev.y) * alpha;
-    this.mesh.scale.set(this.diameter * this.squashX, this.diameter * this.squashY, 1);
+  setSquash(index: number, sx: number, sy: number): void {
+    if (index < 0 || index >= this.meshes.length) return;
+    this.squashX[index] = sx;
+    this.squashY[index] = sy;
+  }
+
+  sync(prevBalls: Vec2[], balls: BallState[], alpha: number): void {
+    const count = Math.min(balls.length, this.meshes.length);
+    for (let i = 0; i < count; i++) {
+      const mesh = this.meshes[i];
+      const prev = prevBalls[i];
+      const curr = balls[i];
+      mesh.position.x = prev.x + (curr.x - prev.x) * alpha;
+      mesh.position.y = prev.y + (curr.y - prev.y) * alpha;
+      mesh.scale.set(this.diameter * this.squashX[i], this.diameter * this.squashY[i], 1);
+      mesh.visible = this.masterVisible;
+    }
+    for (let i = count; i < this.meshes.length; i++) {
+      this.meshes[i].visible = false;
+    }
   }
 }
