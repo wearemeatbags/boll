@@ -28,6 +28,9 @@ export const KB_ACCEL_RATE = 14;
 export const KB_COAST_RATE = 3;
 export const KB_MAX_FACTOR = 1.15;
 export const KB_STOP_SPEED = 2;
+/** Vertical keys stay below the gentle-carry paddle velocity gate. */
+export const KB_VERTICAL_MAX = 48;
+export const KB_VERTICAL_FACTOR = 0.32;
 
 // Serve / hover / pointer bounds (layout-fraction ports of the OG canvas)
 export const SERVE_VX = 16;

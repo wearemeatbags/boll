@@ -7,8 +7,9 @@ export type Mode = 'og' | 'waves' | 'rush' | 'chaos';
 export type BounceModel = 'og' | 'arcade';
 export type GameState = 'title' | 'countdown' | 'playing' | 'paused' | 'gameover' | 'stageclear';
 export type PauseCause = 'user' | 'menu' | 'auto';
-export type RunKind = 'practice' | 'scoreAttack' | 'chaos' | 'stage';
+export type RunKind = 'practice' | 'waves' | 'scoreAttack' | 'chaos' | 'stage';
 export type Medal = 0 | 1 | 2 | 3;
+export type WorldId = 'boot-sector' | 'relay-fields' | 'moonfall' | 'overclock' | 'null-crown';
 
 export interface BallState {
   x: number;
@@ -91,7 +92,18 @@ export interface ModeConfig {
   colorFx: boolean;
 }
 
-export type ObjectiveKind = 'hits' | 'sweetHits' | 'gates' | 'bankGates' | 'carrySeconds' | 'score';
+export type ObjectiveKind =
+  | 'hits'
+  | 'sweetHits'
+  | 'edgeHits'
+  | 'powerHits'
+  | 'wallHits'
+  | 'gates'
+  | 'bankGates'
+  | 'carrySeconds'
+  | 'combo'
+  | 'surviveSeconds'
+  | 'score';
 
 export interface StageObjective {
   kind: ObjectiveKind;
@@ -104,15 +116,44 @@ export interface MedalScores {
   gold: number;
 }
 
+export interface StageRules {
+  /** Multiplies the mode's minimum upward bounce speed. */
+  pace?: number;
+  /** Multiplies the fixed campaign paddle width. */
+  paddleScale?: number;
+  /** Multiplies gravity for low-gravity and heavy-ball stages. */
+  gravityScale?: number;
+  /** 0..1 gate placement pressure, where 1 is smallest and furthest out. */
+  gateDifficulty?: number;
+  /** Per-stage multiball ceiling for CHAOS lessons. */
+  ballCap?: 2 | 3 | 4;
+}
+
+export interface WorldConfig {
+  id: WorldId;
+  index: number;
+  title: string;
+  subtitle: string;
+  description: string;
+}
+
 export interface StageConfig {
   id: string;
   index: number;
+  worldId: WorldId;
   title: string;
   subtitle: string;
   mode: Mode;
   objective: StageObjective;
   medalScores: MedalScores;
   timeLimit?: number;
+  rules?: StageRules;
+  mapX: number;
+  mapY: number;
+  /** Every listed stage must be clear before this node opens. */
+  requires?: string[];
+  optional?: boolean;
+  tower?: boolean;
 }
 
 export interface StageRecord {
@@ -124,7 +165,13 @@ export interface Toggles {
   keyboard: boolean;
   mouse: boolean;
   effects: boolean;
+  shake: boolean;
   crt: boolean;
   sfx: boolean;
   music: boolean;
+}
+
+export interface AudioLevels {
+  music: number;
+  sfx: number;
 }

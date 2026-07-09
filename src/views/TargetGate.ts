@@ -79,6 +79,15 @@ export class GateManager {
     }
   }
 
+  /** Arm gates against a newly served ball without awarding a spawn-inside score. */
+  armForBall(ball: Readonly<BallState>): void {
+    for (const gate of this.gates) {
+      const inside = this.inside(gate, ball);
+      gate.prevInside = inside;
+      gate.armed = !inside;
+    }
+  }
+
   step(h: number, ball: Readonly<BallState>, progress: number, out: GateEvent[]): void {
     if (!this.enabled) return;
     this.time += h;

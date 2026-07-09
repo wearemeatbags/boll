@@ -1,31 +1,53 @@
 import { DEFAULT_PARAMS, SLIDER_DEFS, clamp } from './config';
-import { STAGES, emptyStageRecords } from './stages';
-import type { Medal, Mode, PhysicsParams, StageRecord, Toggles } from './types';
+import { STAGES, STAGE_IDS, emptyStageRecords } from './stages';
+import type { AudioLevels, Medal, Mode, PhysicsParams, StageRecord, Toggles } from './types';
 
-const KEY = 'boll.pj2.v1';
+const SAVE_VERSION = 4;
+const LIVE_KEY = `boll.pj2.v${SAVE_VERSION}`;
+const LEGACY_KEYS = ['boll.pj2.v1'];
 const SAVE_DEBOUNCE_MS = 250;
+
+const archiveVersion =
+  typeof window === 'undefined'
+    ? null
+    : window.location.pathname.match(/\/versions\/(v\d+\.\d+\.\d+)(?:\/|$)/)?.[1] ?? null;
+const KEY = archiveVersion === null ? LIVE_KEY : `${LIVE_KEY}.archive.${archiveVersion}`;
 
 const MODE_IDS: Mode[] = ['og', 'waves', 'rush', 'chaos'];
 
 export interface SaveData {
-  version: 3;
+  version: typeof SAVE_VERSION;
   best: Record<Mode, number>;
   stages: Record<string, StageRecord>;
+  campaign: {
+    lastStageId: string;
+  };
   settings: {
     mode: Mode;
     toggles: Toggles;
+    audio: AudioLevels;
     params: PhysicsParams;
   };
 }
 
 function defaults(): SaveData {
   return {
-    version: 3,
+    version: 4,
     best: { og: 0, waves: 0, rush: 0, chaos: 0 },
     stages: emptyStageRecords(),
+    campaign: { lastStageId: STAGES[0]!.id },
     settings: {
       mode: 'og',
-      toggles: { keyboard: true, mouse: true, effects: true, crt: true, sfx: true, music: true },
+      toggles: {
+        keyboard: true,
+        mouse: true,
+        effects: true,
+        shake: true,
+        crt: true,
+        sfx: true,
+        music: true,
+      },
+      audio: { music: 1, sfx: 1 },
       params: { ...DEFAULT_PARAMS },
     },
   };
@@ -48,6 +70,8 @@ function sanitize(raw: unknown): SaveData {
   const d = defaults();
   if (typeof raw !== 'object' || raw === null) return d;
   const o = raw as Record<string, unknown>;
+  const rawVersion = typeof o['version'] === 'number' ? o['version'] : 0;
+  const hasCurrentCampaign = rawVersion >= 4;
 
   const best = (o['best'] ?? {}) as Record<string, unknown>;
   for (const mode of MODE_IDS) {
@@ -57,16 +81,32 @@ function sanitize(raw: unknown): SaveData {
   if (d.best.waves === 0 && best['arcade'] !== undefined) {
     d.best.waves = asScore(best['arcade']);
   }
+  if (!hasCurrentCampaign) {
+    // V4 made campaign and arcade runs fixed-loadout. Keep the comparable
+    // Practice record, but reset tunable arcade scores and the old six-stage
+    // ladder so stale medals cannot unlock disconnected World Tour nodes.
+    d.best.waves = 0;
+    d.best.rush = 0;
+    d.best.chaos = 0;
+  }
 
-  const stages = (o['stages'] ?? {}) as Record<string, unknown>;
-  for (const stage of STAGES) {
-    const rawRecord = stages[stage.id];
-    if (typeof rawRecord !== 'object' || rawRecord === null) continue;
-    const record = rawRecord as Record<string, unknown>;
-    d.stages[stage.id] = {
-      bestScore: asScore(record['bestScore']),
-      medal: asMedal(record['medal']),
-    };
+  if (hasCurrentCampaign) {
+    const stages = (o['stages'] ?? {}) as Record<string, unknown>;
+    for (const stage of STAGES) {
+      const rawRecord = stages[stage.id];
+      if (typeof rawRecord !== 'object' || rawRecord === null) continue;
+      const record = rawRecord as Record<string, unknown>;
+      d.stages[stage.id] = {
+        bestScore: asScore(record['bestScore']),
+        medal: asMedal(record['medal']),
+      };
+    }
+
+    const campaign = (o['campaign'] ?? {}) as Record<string, unknown>;
+    const lastStageId = campaign['lastStageId'];
+    if (typeof lastStageId === 'string' && STAGE_IDS.includes(lastStageId)) {
+      d.campaign.lastStageId = lastStageId;
+    }
   }
 
   const settings = (o['settings'] ?? {}) as Record<string, unknown>;
@@ -82,6 +122,13 @@ function sanitize(raw: unknown): SaveData {
     d.settings.toggles[key] = asBool(toggles[key], d.settings.toggles[key]);
   }
 
+  const audio = (settings['audio'] ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(d.settings.audio) as Array<keyof AudioLevels>) {
+    const value = audio[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      d.settings.audio[key] = clamp(value, 0, 1);
+    }
+  }
   const params = (settings['params'] ?? {}) as Record<string, unknown>;
   for (const def of SLIDER_DEFS) {
     const v = params[def.key];
@@ -98,13 +145,26 @@ export class Storage {
 
   constructor() {
     let raw: unknown = null;
+    let loadedFromLegacy = false;
     try {
-      const text = localStorage.getItem(KEY);
+      let text = localStorage.getItem(KEY);
+      if (text === null && archiveVersion === null) {
+        for (const legacyKey of LEGACY_KEYS) {
+          text = localStorage.getItem(legacyKey);
+          if (text !== null) {
+            loadedFromLegacy = true;
+            break;
+          }
+        }
+      }
       raw = text === null ? null : JSON.parse(text);
     } catch (err) {
       console.warn('boll: failed to load save data, using defaults', err);
     }
     this.data = sanitize(raw);
+    const loadedVersion =
+      typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)['version'] : null;
+    if (loadedFromLegacy || loadedVersion !== this.data.version) this.schedule();
     window.addEventListener('pagehide', () => this.flush());
   }
 
@@ -124,5 +184,13 @@ export class Storage {
     } catch (err) {
       console.warn('boll: failed to persist save data', err);
     }
+  }
+
+  /** Clear scores and campaign medals while preserving player preferences. */
+  resetProgress(): void {
+    this.data.best = { og: 0, waves: 0, rush: 0, chaos: 0 };
+    this.data.stages = emptyStageRecords();
+    this.data.campaign.lastStageId = STAGES[0]!.id;
+    this.flush();
   }
 }

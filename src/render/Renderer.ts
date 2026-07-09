@@ -34,6 +34,8 @@ export class Renderer {
   readonly camera: OrthographicCamera;
   readonly canvas: HTMLCanvasElement;
   private crtEnabled = true;
+  private motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private reducedMotion = this.motionQuery.matches;
 
   private gl: WebGLRenderer;
   private target: WebGLRenderTarget;
@@ -42,6 +44,8 @@ export class Renderer {
   private crtUniforms = createCrtUniforms();
   private cssW = 320;
   private cssH = 200;
+  private offsetX = 0;
+  private offsetY = 0;
   private time = 0;
   private nextBurstAt = 8 + Math.random() * 12;
   private burstLeft = 0;
@@ -96,6 +100,7 @@ export class Renderer {
     this.buildFrame();
 
     window.addEventListener('resize', this.resize);
+    this.motionQuery.addEventListener('change', this.onMotionPreference);
     if (typeof ResizeObserver !== 'undefined') {
       this.observer = new ResizeObserver(() => this.resize());
       this.observer.observe(host);
@@ -116,7 +121,12 @@ export class Renderer {
   render(dt: number, camOffset: Vec2): void {
     this.camera.position.set(camOffset.x, camOffset.y, 10);
     if (this.crtEnabled) {
-      this.tickCrt(dt);
+      if (this.reducedMotion) {
+        this.crtUniforms.uBurst.value = 0;
+        this.crtUniforms.uSeed.value = 0.5;
+      } else {
+        this.tickCrt(dt);
+      }
       this.gl.setRenderTarget(this.target);
       this.gl.render(this.scene, this.camera);
       this.gl.setRenderTarget(null);
@@ -130,8 +140,8 @@ export class Renderer {
   /** World units -> CSS px within the stage (fixed frustum makes this exact). */
   worldToScreen(x: number, y: number): Vec2 {
     return {
-      x: (x / WORLD_W + 0.5) * this.cssW,
-      y: (0.5 - y / WORLD_H) * this.cssH,
+      x: this.offsetX + (x / WORLD_W + 0.5) * this.cssW,
+      y: this.offsetY + (0.5 - y / WORLD_H) * this.cssH,
     };
   }
 
@@ -146,6 +156,7 @@ export class Renderer {
 
   dispose(): void {
     window.removeEventListener('resize', this.resize);
+    this.motionQuery.removeEventListener('change', this.onMotionPreference);
     this.observer?.disconnect();
     this.target.dispose();
     this.gl.dispose();
@@ -154,24 +165,41 @@ export class Renderer {
   private resize = (): void => {
     const availW = Math.max(160, this.host.clientWidth - STAGE_MARGIN * 2);
     const availH = Math.max(100, this.host.clientHeight - STAGE_MARGIN * 2);
+    const portraitShell = availH > availW * 1.25;
     const scale = Math.min(availW / WORLD_W, availH / WORLD_H);
     // Even integers keep the canvas mapped 1:1 to physical pixels (no blur).
-    const cssW = Math.max(320, Math.round((WORLD_W * scale) / 2) * 2);
+    const cssW = portraitShell
+      ? Math.max(160, Math.round(Math.min(availW, availH * (WORLD_W / WORLD_H)) / 2) * 2)
+      : Math.max(240, Math.round((WORLD_W * scale) / 2) * 2);
     const cssH = Math.round(cssW * (WORLD_H / WORLD_W));
+    const stageW = portraitShell ? availW : cssW;
+    const stageH = portraitShell ? availH : cssH;
+    this.offsetX = Math.round((stageW - cssW) / 2);
+    this.offsetY = Math.round((stageH - cssH) / 2);
     this.cssW = cssW;
     this.cssH = cssH;
 
     const dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1);
-    this.stage.style.width = `${cssW}px`;
-    this.stage.style.height = `${cssH}px`;
+    this.stage.classList.toggle('portrait-shell', portraitShell);
+    this.stage.style.width = `${stageW}px`;
+    this.stage.style.height = `${stageH}px`;
+    this.stage.style.setProperty('--game-left', `${this.offsetX}px`);
+    this.stage.style.setProperty('--game-right', `${stageW - cssW - this.offsetX}px`);
+    this.stage.style.setProperty('--game-top', `${this.offsetY}px`);
+    this.stage.style.setProperty('--game-bottom', `${stageH - cssH - this.offsetY}px`);
+    this.stage.style.setProperty('--game-width', `${cssW}px`);
+    this.stage.style.setProperty('--game-height', `${cssH}px`);
+    this.stage.style.setProperty('--game-center-x', `${this.offsetX + cssW / 2}px`);
     this.stage.style.setProperty(
       '--crt-radius',
       `${(Math.min(cssW, cssH) * CRT_CORNER_FRAC).toFixed(1)}px`,
     );
     this.gl.setPixelRatio(dpr);
     this.gl.setSize(cssW, cssH, false);
-    this.canvas.style.width = '100%';
-    this.canvas.style.height = '100%';
+    this.canvas.style.left = `${this.offsetX}px`;
+    this.canvas.style.top = `${this.offsetY}px`;
+    this.canvas.style.width = `${cssW}px`;
+    this.canvas.style.height = `${cssH}px`;
     this.target.setSize(Math.round(cssW * dpr), Math.round(cssH * dpr));
     this.crtUniforms.uResolution.value.set(Math.round(cssW * dpr), Math.round(cssH * dpr));
   };
@@ -187,6 +215,10 @@ export class Renderer {
     this.crtUniforms.uSeed.value = Math.random();
     this.crtUniforms.uTime.value = this.time;
   }
+
+  private onMotionPreference = (event: MediaQueryListEvent): void => {
+    this.reducedMotion = event.matches;
+  };
 
   /** Dim inset frame: straight lines that sell the barrel warp. */
   private buildFrame(): void {

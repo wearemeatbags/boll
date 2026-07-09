@@ -4,6 +4,8 @@ import {
   KB_COAST_RATE,
   KB_MAX_FACTOR,
   KB_STOP_SPEED,
+  KB_VERTICAL_FACTOR,
+  KB_VERTICAL_MAX,
   PADDLE_REST_Y,
   TARGET_Y_MAX,
   TARGET_Y_MIN,
@@ -16,19 +18,26 @@ export type InputAction = 'primary' | 'serveKey' | 'pauseKey' | 'restartKey';
 
 const LEFT_CODES = new Set(['ArrowLeft', 'KeyA']);
 const RIGHT_CODES = new Set(['ArrowRight', 'KeyD']);
+const UP_CODES = new Set(['ArrowUp', 'KeyW']);
+const DOWN_CODES = new Set(['ArrowDown', 'KeyS']);
 
 /**
  * Pointer drives the paddle in both axes (absolute-position pursuit). While
- * arrow/A/D keys are held, keyboard owns x and the stale pointer x target is
- * cleared; a fresh pointer move after release reclaims x.
+ * direction/WASD keys are held, keyboard owns that axis; a fresh pointer move
+ * after release reclaims it. Vertical key motion is deliberately gentle enough
+ * to perform carry objectives without a pointer.
  */
 export class InputController {
   private pointerTargetX: number | null = null;
   private lastPointerY = PADDLE_REST_Y;
   private kbVx = 0;
+  private keyboardTargetY = PADDLE_REST_Y;
   private left = false;
   private right = false;
+  private up = false;
+  private down = false;
   private xOwner: 'pointer' | 'keyboard' = 'pointer';
+  private yOwner: 'pointer' | 'keyboard' = 'pointer';
   private keyboardEnabled = true;
   private mouseEnabled = true;
   private paddleSpeed = 150;
@@ -73,8 +82,12 @@ export class InputController {
     if (!on) {
       this.left = false;
       this.right = false;
+      this.up = false;
+      this.down = false;
       this.kbVx = 0;
       this.xOwner = 'pointer';
+      this.yOwner = 'pointer';
+      this.keyboardTargetY = PADDLE_REST_Y;
     }
   }
 
@@ -82,7 +95,12 @@ export class InputController {
     this.mouseEnabled = on;
     if (!on) {
       this.pointerTargetX = null;
+      this.keyboardTargetY = this.lastPointerY;
       this.lastPointerY = PADDLE_REST_Y;
+      if (this.keyboardEnabled) this.yOwner = 'keyboard';
+    } else {
+      this.lastPointerY = this.keyboardTargetY;
+      this.yOwner = 'pointer';
     }
   }
 
@@ -99,6 +117,17 @@ export class InputController {
   }
 
   sample(h: number, paddleX: number, halfW: number): ControlFrame {
+    const verticalDir = (this.up ? 1 : 0) - (this.down ? 1 : 0);
+    if (this.keyboardEnabled && this.yOwner === 'keyboard' && verticalDir !== 0) {
+      this.keyboardTargetY = clamp(
+        this.keyboardTargetY +
+          verticalDir * Math.min(this.paddleSpeed * KB_VERTICAL_FACTOR, KB_VERTICAL_MAX) * h,
+        TARGET_Y_MIN,
+        TARGET_Y_MAX,
+      );
+    }
+    const targetY = this.targetY();
+
     if (this.xOwner === 'keyboard' && this.keyboardEnabled) {
       const dir = (this.right ? 1 : 0) - (this.left ? 1 : 0);
       if (dir !== 0) {
@@ -116,11 +145,11 @@ export class InputController {
       ) {
         this.kbVx = 0;
       }
-      return { targetX: null, targetY: this.targetY(), kbVx: this.kbVx, xOwner: 'keyboard' };
+      return { targetX: null, targetY, kbVx: this.kbVx, xOwner: 'keyboard' };
     }
     return {
       targetX: this.mouseEnabled ? this.pointerTargetX : null,
-      targetY: this.targetY(),
+      targetY,
       kbVx: 0,
       xOwner: 'pointer',
     };
@@ -131,6 +160,7 @@ export class InputController {
   }
 
   private targetY(): number {
+    if (this.keyboardEnabled && this.yOwner === 'keyboard') return this.keyboardTargetY;
     return this.mouseEnabled ? this.lastPointerY : PADDLE_REST_Y;
   }
 
@@ -142,6 +172,7 @@ export class InputController {
     this.lastPointerY = clamp(p.y + lift, TARGET_Y_MIN, TARGET_Y_MAX);
     // Reclaim x only when no direction key is held.
     if (!this.left && !this.right) this.xOwner = 'pointer';
+    if (!this.up && !this.down) this.yOwner = 'pointer';
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -165,6 +196,18 @@ export class InputController {
       e.preventDefault();
       return;
     }
+    if (this.keyboardEnabled && UP_CODES.has(e.code)) {
+      this.up = true;
+      this.takeKeyboardYOwnership();
+      e.preventDefault();
+      return;
+    }
+    if (this.keyboardEnabled && DOWN_CODES.has(e.code)) {
+      this.down = true;
+      this.takeKeyboardYOwnership();
+      e.preventDefault();
+      return;
+    }
     if (e.repeat) return;
     if (e.code === 'Space') {
       this.actionCb('serveKey');
@@ -181,11 +224,18 @@ export class InputController {
   private handleKeyUp(e: KeyboardEvent): void {
     if (LEFT_CODES.has(e.code)) this.left = false;
     if (RIGHT_CODES.has(e.code)) this.right = false;
+    if (UP_CODES.has(e.code)) this.up = false;
+    if (DOWN_CODES.has(e.code)) this.down = false;
   }
 
   private takeKeyboardOwnership(): void {
     this.xOwner = 'keyboard';
     // Clear the stale pointer target so pointer and keys never fight.
     this.pointerTargetX = null;
+  }
+
+  private takeKeyboardYOwnership(): void {
+    if (this.yOwner !== 'keyboard') this.keyboardTargetY = this.lastPointerY;
+    this.yOwner = 'keyboard';
   }
 }

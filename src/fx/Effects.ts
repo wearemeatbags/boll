@@ -47,6 +47,7 @@ interface Popup {
 export class Effects {
   enabled = true;
 
+  private shakeEnabled = true;
   private mesh: InstancedMesh;
   private particles: Particle[] = [];
   private dummy = new Object3D();
@@ -140,7 +141,7 @@ export class Effects {
   }
 
   shake(mag: number): void {
-    if (!this.enabled) return;
+    if (!this.enabled || !this.shakeEnabled) return;
     this.trauma = Math.min(1, this.trauma + mag);
   }
 
@@ -178,6 +179,12 @@ export class Effects {
   setEnabled(on: boolean): void {
     this.enabled = on;
     if (!on) this.clear();
+  }
+
+  /** Toggle camera shake independently from particles, squash, and popups. */
+  setShakeEnabled(on: boolean): void {
+    this.shakeEnabled = on;
+    if (!on) this.clearShake();
   }
 
   update(dt: number): void {
@@ -220,6 +227,7 @@ export class Effects {
   }
 
   private updateShake(dt: number): void {
+    if (!this.shakeEnabled) return;
     this.trauma = Math.max(0, this.trauma - SHAKE_DECAY * dt);
     const mag = this.trauma * this.trauma * SHAKE_MAX;
     this.shakeOffset.x = mag * (Math.random() * 2 - 1);
@@ -268,11 +276,15 @@ export class Effects {
       p.el.style.opacity = '0';
       p.el.style.color = '';
     }
-    this.trauma = 0;
-    this.shakeOffset.x = 0;
-    this.shakeOffset.y = 0;
+    this.clearShake();
     this.squashT = 0;
     if (this.squashIndex >= 0) this.ballSquash(this.squashIndex, 1, 1);
     this.squashIndex = -1;
+  }
+
+  private clearShake(): void {
+    this.trauma = 0;
+    this.shakeOffset.x = 0;
+    this.shakeOffset.y = 0;
   }
 }
