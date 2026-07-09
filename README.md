@@ -4,6 +4,8 @@ A retro CRT arcade juggling game: one paddle, one square ball, keep it alive.
 Built with Vite, TypeScript (strict), and three.js. Black screen, white shapes,
 square-wave beeps, looping soundtrack, and a proper curved-glass CRT filter.
 
+Play it at <https://wearemeatbags.github.io/boll/>.
+
 Two ways to play, switchable in the menu:
 
 - **OG** (default): a faithful port of the original single-file prototype.
