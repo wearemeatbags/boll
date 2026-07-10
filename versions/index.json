@@ -1,0 +1,32 @@
+[
+  {
+    "id": "9795f63",
+    "date": "2026-07-09T15:13:38-04:00",
+    "message": "Add campaign map, versioned Pages deploy, and gameplay/UI polish"
+  },
+  {
+    "id": "569d501",
+    "date": "2026-07-08T23:41:17Z",
+    "message": "Polish menu and add run countdown"
+  },
+  {
+    "id": "ffc5397",
+    "date": "2026-07-08T23:01:34Z",
+    "message": "Add arcade ladder progression"
+  },
+  {
+    "id": "a9a67e2",
+    "date": "2026-07-08T21:59:47Z",
+    "message": "Add WAVES, RUSH, and CHAOS game modes with colorful particles"
+  },
+  {
+    "id": "6609c4d",
+    "date": "2026-07-08T21:16:32Z",
+    "message": "Deploy BOLL to GitHub Pages"
+  },
+  {
+    "id": "260400a",
+    "date": "2026-07-08T20:41:33Z",
+    "message": "BOLL: retro CRT paddle juggle, rebuilt as Vite + TypeScript + three.js"
+  }
+]
